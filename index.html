@@ -38,6 +38,10 @@
     .sortable-list::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
     
     .is-new-border { border-left: 4px solid #dc2626 !important; }
+    
+    /* Stile per pulsante blocco */
+    .btn-lock-on { background-color: #64748b !important; } /* Slate */
+    .btn-lock-off { background-color: #0ea5e9 !important; } /* Sky */
   </style>
 </head>
 
@@ -51,7 +55,13 @@
         <p id="statusLine" class="text-slate-400 text-xs mt-2 font-bold uppercase tracking-widest"></p>
       </div>
 
-      <div class="flex flex-wrap gap-2 justify-start lg:justify-end">
+      <div class="flex flex-wrap gap-2 justify-start lg:justify-end items-center">
+        <button id="lockBtn" onclick="fn_toggleLock()" class="bg-sky-500 text-white px-4 py-2 rounded-xl font-bold hover:opacity-90 transition flex items-center gap-2 text-xs shadow-sm">
+          <i id="lockIcon" class="fas fa-lock-open"></i> <span id="lockText">SPOSTA: ON</span>
+        </button>
+
+        <div class="h-8 w-[1px] bg-slate-200 mx-1 hidden sm:block"></div>
+
         <button onclick="fn_addSingleChannel()" class="bg-red-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-red-700 transition flex items-center gap-2 text-xs shadow-sm">
           <i class="fas fa-play-circle"></i> CANALE
         </button>
@@ -126,7 +136,7 @@
     let driveFileId = null;
 
     // --- FUNZIONI CORE ---
-    function loadSettings() { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || { useProxy: false, proxyUrlTemplate: "" }; } catch { return { useProxy: false, proxyUrlTemplate: "" }; } }
+    function loadSettings() { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || { useProxy: false, proxyUrlTemplate: "", isLocked: false }; } catch { return { useProxy: false, proxyUrlTemplate: "", isLocked: false }; } }
     function persistSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
     function loadData() {
       try { 
@@ -146,6 +156,31 @@
     }
 
     function setStatus(msg) { document.getElementById("statusLine").textContent = msg || ""; }
+
+    // --- FUNZIONE BLOCCO ---
+    function fn_toggleLock() {
+      settings.isLocked = !settings.isLocked;
+      persistSettings();
+      updateLockUI();
+      render(); // Ricarica la board con/senza Sortable attivo
+    }
+
+    function updateLockUI() {
+      const btn = document.getElementById("lockBtn");
+      const icon = document.getElementById("lockIcon");
+      const text = document.getElementById("lockText");
+      if (settings.isLocked) {
+        btn.classList.remove("bg-sky-500");
+        btn.classList.add("bg-slate-500");
+        icon.className = "fas fa-lock";
+        text.innerText = "SPOSTA: OFF";
+      } else {
+        btn.classList.remove("bg-slate-500");
+        btn.classList.add("bg-sky-500");
+        icon.className = "fas fa-lock-open";
+        text.innerText = "SPOSTA: ON";
+      }
+    }
 
     function render() {
       const board = document.getElementById("mainBoard");
@@ -180,8 +215,12 @@
           const dateLabel = ch.latestVideoPublished ? new Date(ch.latestVideoPublished).toLocaleDateString("it-IT", {day:'2-digit', month:'2-digit', year:'2-digit'}) : "n/d";
           const titleColorClass = isActuallyNew ? "text-red-600 font-black" : "text-slate-400 font-medium";
           const videoUrlForAI = ch.latestVideoId ? `https://www.youtube.com/watch?v=${ch.latestVideoId}` : null;
+          
+          // Se bloccato, nascondiamo l'icona del trascinamento
+          const dragIcon = settings.isLocked ? '' : `<div class="drag-handle mr-3 text-slate-200 group-hover:text-slate-400 transition-colors"><i class="fas fa-grip-vertical"></i></div>`;
+          
           item.innerHTML = `
-            <div class="drag-handle mr-3 text-slate-200 group-hover:text-slate-400 transition-colors"><i class="fas fa-grip-vertical"></i></div>
+            ${dragIcon}
             <div class="flex-1 min-w-0">
               <div class="truncate text-sm font-bold text-slate-800">${ch.name}</div>
               <div class="truncate text-[10px] mt-0.5 uppercase tracking-tight ${titleColorClass}">${ch.latestVideoTitle || 'In attesa di verifica...'}</div>
@@ -199,8 +238,11 @@
         col.appendChild(header);
         col.appendChild(list);
         board.appendChild(col);
+        
+        // Inizializza Sortable sui canali (solo se non bloccato)
         new Sortable(list, {
           group: "channels", animation: 150, ghostClass: "ghost", handle: ".drag-handle",
+          disabled: settings.isLocked,
           onAdd: function (evt) {
             if (evt.to.id === 'top-channels') {
               const itemEl = evt.item;
@@ -214,12 +256,21 @@
           onEnd: () => { syncFromDOM(); persistData(); fn_checkBadges(); render(); }
         });
       });
-      new Sortable(board, { animation: 150, ghostClass: "ghost", handle: ".category-header", onEnd: () => { syncFromDOM(); persistData(); render(); } });
+      
+      // Inizializza Sortable sulle categorie (solo se non bloccato)
+      new Sortable(board, { 
+        animation: 150, 
+        ghostClass: "ghost", 
+        handle: ".category-header", 
+        disabled: settings.isLocked,
+        onEnd: () => { syncFromDOM(); persistData(); render(); } 
+      });
+
       fn_checkBadges();
       setStatus(`Monitorando ${countChannels()} canali.`);
     }
 
-    // --- GOOGLE DRIVE LOGIC (FIXED) ---
+    // --- GOOGLE DRIVE LOGIC ---
     function gapiLoaded() {
         gapi.load('client', async () => {
             await gapi.client.init({ apiKey: API_KEY, discoveryDocs: [DISCOVERY_DOC] });
@@ -314,7 +365,7 @@
             localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
             render();
             setStatus("Dati caricati dal Cloud");
-        } else if (response.body) { // Fix per caricamento body testo
+        } else if (response.body) { 
             try {
                const data = JSON.parse(response.body);
                if(Array.isArray(data)) {
@@ -424,6 +475,7 @@
     window.onload = () => { 
         document.getElementById("useProxyToggle").checked = settings.useProxy; 
         document.getElementById("proxyUrlInput").value = settings.proxyUrlTemplate; 
+        updateLockUI();
         render(); 
     };
   </script>
