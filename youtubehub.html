@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YT HUB PRO - Cloud Email Sync</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"/>
+
+  <style>
+    .ghost { opacity: 0.3; background: #cbd5e1; }
+    .drag-handle { cursor: grab; }
+    .category-header { cursor: move; }
+    
+    #mainBoard { 
+      display: block; 
+      column-gap: 1.5rem;
+      width: 100%;
+      padding-bottom: 50px;
+    }
+
+    @media (min-width: 768px) { #mainBoard { column-count: 2; } }
+    @media (min-width: 1280px) { #mainBoard { column-count: 3; } }
+    @media (min-width: 1600px) { #mainBoard { column-count: 4; } }
+
+    .column-width { 
+      display: inline-block; 
+      width: 100%; 
+      margin-bottom: 1.5rem; 
+      break-inside: avoid;
+    }
+
+    .sortable-list { min-height: 100px; max-height: 55vh; overflow-y: auto; }
+    .sortable-list::-webkit-scrollbar { width: 5px; }
+    .sortable-list::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+    
+    .is-new-border { border-left: 4px solid #dc2626 !important; }
+  </style>
+</head>
+
+<body class="bg-slate-50 min-h-screen">
+  <div class="p-4 sm:p-8">
+    <header class="max-w-[1600px] mx-auto mb-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+      <div class="min-w-0">
+        <h1 class="text-2xl font-black text-slate-800 tracking-tighter italic">
+          YT HUB <span class="text-red-600 font-normal">PRO</span>
+        </h1>
+        <p id="statusLine" class="text-slate-400 text-xs mt-2 font-bold uppercase tracking-widest"></p>
+      </div>
+
+      <div class="flex flex-wrap gap-2 justify-start lg:justify-end">
+        <button onclick="fn_addSingleChannel()" class="bg-red-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-red-700 transition flex items-center gap-2 text-xs shadow-sm">
+          <i class="fas fa-play-circle"></i> CANALE
+        </button>
+        <button onclick="fn_addCategory()" class="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 transition flex items-center gap-2 text-xs shadow-sm">
+          <i class="fas fa-plus"></i> CATEGORIA
+        </button>
+        <button onclick="fn_checkAllUpdates()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-emerald-700 transition flex items-center gap-2 text-xs shadow-sm">
+          <i class="fas fa-rotate"></i> VERIFICA
+        </button>
+
+        <div class="h-8 w-[1px] bg-slate-200 mx-1 hidden sm:block"></div>
+
+        <button onclick="fn_shareBackup()" class="bg-blue-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-blue-700 transition flex items-center gap-2 text-xs shadow-sm">
+          <i class="fas fa-share-nodes"></i> CONDIVIDI
+        </button>
+
+        <button id="auth_button" onclick="handleAuthClick()" class="bg-amber-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-amber-700 transition flex items-center gap-2 text-xs shadow-sm">
+          <i class="fab fa-google"></i> ACCEDI DRIVE
+        </button>
+
+        <button onclick="fn_exportJson()" class="bg-slate-200 text-slate-800 px-4 py-2 rounded-xl font-bold hover:bg-slate-300 transition flex items-center gap-2 text-xs shadow-sm">
+          <i class="fas fa-download"></i> EXPORT
+        </button>
+
+        <label class="cursor-pointer bg-slate-200 text-slate-800 px-4 py-2 rounded-xl font-bold hover:bg-slate-300 transition flex items-center gap-2 shadow-sm text-xs">
+          <i class="fas fa-file-import"></i> IMPORT
+          <input type="file" id="jsonFileInput" accept=".json" class="hidden" />
+        </label>
+
+        <button onclick="fn_reset()" class="text-slate-300 hover:text-red-600 transition p-2"><i class="fas fa-sync"></i></button>
+      </div>
+    </header>
+
+    <div class="max-w-[1600px] mx-auto mb-8 bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+      <div class="flex flex-col md:flex-row gap-4 md:items-center justify-between">
+        <div class="flex items-center gap-3"><i class="fas fa-sliders text-slate-400"></i><span class="text-sm font-semibold text-slate-700">Connettività Cloudflare</span></div>
+        <div class="flex flex-1 max-w-2xl gap-3 justify-end items-center">
+          <label class="flex items-center gap-2 text-sm font-bold text-slate-600"><input id="useProxyToggle" type="checkbox" class="accent-emerald-600" /> Proxy</label>
+          <input id="proxyUrlInput" type="text" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm outline-none" placeholder="URL Worker" />
+          <button onclick="fn_saveSettings()" class="bg-slate-800 text-white px-6 py-2 rounded-xl font-bold text-sm shadow-sm">Salva</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="mainBoard" class="max-w-[1600px] mx-auto"></div>
+  </div>
+
+  <script>
+    // --- CONFIGURAZIONE GOOGLE (I TUOI DATI) ---
+    const CLIENT_ID = '530637025416-kbq28ucudmp4tdj7krlqjvmcamrv3dr9.apps.googleusercontent.com';
+    const API_KEY = 'AIzaSyCGDLbdjDyKSAO7XhGLjrLrYvywUG4PhX0';
+
+    const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
+    const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+    const SYNC_FILE_NAME = "ythub_cloud_sync.json";
+
+    // --- VARIABILI APP ---
+    const STORAGE_KEY = "yt_hub_vstable";
+    const SETTINGS_KEY = "yt_hub_settings";
+    const NOTEBOOK_ID = "a0ccfd64-27b5-4cd5-988b-cb7565cda915";
+
+    const DEFAULT_DATA = [
+      { id: "top-channels", title: "★ TOP CHANNELS", color: "bg-amber-500", channels: [] },
+      { id: "inbox", title: "DA SMISTARE", color: "bg-slate-700", channels: [] }
+    ];
+
+    let appData = loadData();
+    let settings = loadSettings();
+    let tokenClient;
+    let gapiInited = false;
+    let driveFileId = null;
+
+    // --- LOGICA CORE ---
+    function loadSettings() { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || { useProxy: false, proxyUrlTemplate: "" }; } catch { return { useProxy: false, proxyUrlTemplate: "" }; } }
+    function persistSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
+    function loadData() {
+      try { 
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return structuredClone(DEFAULT_DATA);
+        const parsed = JSON.parse(raw);
+        if (!parsed.some(c => c.id === "top-channels")) parsed.unshift(structuredClone(DEFAULT_DATA[0]));
+        return parsed;
+      } catch { return structuredClone(DEFAULT_DATA); }
+    }
+
+    // --- AGGIORNATA PER DRIVE ---
+    function persistData() { 
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(appData)); 
+        if (driveFileId) saveToDrive(); 
+    }
+
+    function setStatus(msg) { document.getElementById("statusLine").textContent = msg || ""; }
+
+    function render() {
+      const board = document.getElementById("mainBoard");
+      board.innerHTML = "";
+      appData.forEach(cat => {
+        const col = document.createElement("div");
+        col.className = "column-width";
+        const header = document.createElement("div");
+        header.className = `${cat.color} text-white p-4 rounded-t-2xl font-bold flex justify-between items-center shadow-sm category-header`;
+        header.innerHTML = `
+          <div class="flex items-center gap-2">
+            <span class="tracking-tight uppercase text-xs">${cat.title}</span>
+            <span class="bg-black/20 text-white/90 px-2 py-0.5 rounded-full text-[10px] font-black">${cat.channels.length}</span>
+            <span id="badge-${cat.id}" class="hidden bg-white text-slate-900 text-[9px] px-1.5 py-0.5 rounded font-black animate-pulse">NEW</span>
+          </div>
+        `;
+        if (cat.id !== "inbox" && cat.id !== "top-channels") {
+          const delBtn = document.createElement("button");
+          delBtn.innerHTML = '<i class="fas fa-times text-xs"></i>';
+          delBtn.className = "opacity-40 hover:opacity-100 transition";
+          delBtn.onclick = (e) => { e.stopPropagation(); fn_deleteCategory(cat.id); };
+          header.appendChild(delBtn);
+        }
+        const list = document.createElement("div");
+        list.id = cat.id;
+        list.className = "sortable-list bg-white p-3 rounded-b-2xl shadow-sm space-y-2 border border-slate-200";
+        cat.channels.forEach(ch => {
+          const item = document.createElement("div");
+          const isActuallyNew = ch.isNew === true || ch.lastSeenVideoId === null;
+          item.className = `flex items-center p-3 bg-white border border-slate-100 rounded-xl hover:shadow-md transition group ${isActuallyNew ? 'is-new-border' : ''}`;
+          item.dataset.chId = ch.id;
+          const dateLabel = ch.latestVideoPublished ? new Date(ch.latestVideoPublished).toLocaleDateString("it-IT", {day:'2-digit', month:'2-digit', year:'2-digit'}) : "n/d";
+          const titleColorClass = isActuallyNew ? "text-red-600 font-black" : "text-slate-400 font-medium";
+          const videoUrlForAI = ch.latestVideoId ? `https://www.youtube.com/watch?v=${ch.latestVideoId}` : null;
+          item.innerHTML = `
+            <div class="drag-handle mr-3 text-slate-200 group-hover:text-slate-400 transition-colors"><i class="fas fa-grip-vertical"></i></div>
+            <div class="flex-1 min-w-0">
+              <div class="truncate text-sm font-bold text-slate-800">${ch.name}</div>
+              <div class="truncate text-[10px] mt-0.5 uppercase tracking-tight ${titleColorClass}">${ch.latestVideoTitle || 'In attesa di verifica...'}</div>
+            </div>
+            <div class="flex items-center gap-1 ml-2">
+              <span class="text-[9px] text-slate-400 tabular-nums font-black mr-1">${dateLabel}</span>
+              <button class="text-slate-200 hover:text-emerald-500 p-1" onclick="fn_markSeen('${ch.id}')"><i class="fas fa-check-circle"></i></button>
+              <button class="text-slate-200 hover:text-red-500 p-1" onclick="fn_deleteChannel('${ch.id}', '${cat.id}')"><i class="fas fa-trash-alt text-xs"></i></button>
+              <button class="text-indigo-400 hover:text-indigo-600 p-1" onclick="fn_analyzeWithAI('${videoUrlForAI}')"><i class="fas fa-book-open text-sm"></i></button>
+              <a href="${ch.url}" target="_blank" class="text-slate-200 hover:text-red-600 p-1" onclick="fn_touchChannel('${ch.id}')"><i class="fab fa-youtube text-lg"></i></a>
+            </div>
+          `;
+          list.appendChild(item);
+        });
+        col.appendChild(header);
+        col.appendChild(list);
+        board.appendChild(col);
+        new Sortable(list, {
+          group: "channels",
+          animation: 150,
+          ghostClass: "ghost",
+          handle: ".drag-handle",
+          onAdd: function (evt) {
+            if (evt.to.id === 'top-channels') {
+              const itemEl = evt.item;
+              const alreadyExists = Array.from(evt.to.children).filter(child => child.dataset.chId === itemEl.dataset.chId).length > 1;
+              if (alreadyExists) evt.to.removeChild(itemEl);
+              const clone = itemEl.cloneNode(true);
+              evt.from.insertBefore(clone, evt.from.children[evt.oldIndex]);
+            }
+            syncFromDOM(); persistData(); render();
+          },
+          onEnd: () => { syncFromDOM(); persistData(); fn_checkBadges(); render(); }
+        });
+      });
+      new Sortable(board, { animation: 150, ghostClass: "ghost", handle: ".category-header", onEnd: () => { syncFromDOM(); persistData(); render(); } });
+      fn_checkBadges();
+      setStatus(`Monitorando ${countChannels()} canali.`);
+    }
+
+    // --- FUNZIONI GOOGLE DRIVE ---
+    function gapiLoaded() {
+        gapi.load('client', async () => {
+            await gapi.client.init({ apiKey: API_KEY, discoveryDocs: [DISCOVERY_DOC] });
+            gapiInited = true;
+        });
+    }
+
+    function gisLoaded() {
+        tokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: CLIENT_ID,
+            scope: SCOPES,
+            callback: '', 
+        });
+    }
+
+    async function handleAuthClick() {
+        tokenClient.callback = async (resp) => {
+            if (resp.error !== undefined) throw (resp);
+            document.getElementById('auth_button').innerHTML = '<i class="fas fa-cloud"></i> DRIVE ATTIVO';
+            document.getElementById('auth_button').classList.replace('bg-amber-600', 'bg-emerald-600');
+            await initializeDriveFile();
+        };
+        if (gapi.client.getToken() === null) {
+            tokenClient.requestAccessToken({ prompt: 'consent' });
+        } else {
+            tokenClient.requestAccessToken({ prompt: '' });
+        }
+    }
+
+    async function initializeDriveFile() {
+        setStatus("Sincronizzazione Cloud...");
+        const response = await gapi.client.drive.files.list({
+            q: `name = '${SYNC_FILE_NAME}' and trashed = false`,
+            fields: 'files(id, name)',
+        });
+        const files = response.result.files;
+        if (files.length > 0) {
+            driveFileId = files[0].id;
+            await loadFromDrive();
+        } else {
+            await createDriveFile();
+        }
+    }
+
+    async function createDriveFile() {
+        const metadata = { name: SYNC_FILE_NAME, mimeType: 'application/json' };
+        const response = await gapi.client.drive.files.create({ resource: metadata, fields: 'id' });
+        driveFileId = response.result.id;
+        saveToDrive();
+    }
+
+    async function saveToDrive() {
+        if (!driveFileId) return;
+        const content = JSON.stringify(appData);
+        await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`, {
+            method: 'PATCH',
+            headers: { 'Authorization': 'Bearer ' + gapi.client.getToken().access_token, 'Content-Type': 'application/json' },
+            body: content
+        });
+        setStatus("Sincronizzato su Drive");
+    }
+
+    async function loadFromDrive() {
+        const response = await gapi.client.drive.files.get({ fileId: driveFileId, alt: 'media' });
+        if (response.result) {
+            appData = response.result;
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+            render();
+            setStatus("Dati caricati dal Cloud");
+        }
+    }
+
+    // --- ALTRE FUNZIONI UTILITY ---
+    window.fn_shareBackup = async function() {
+      const fileName = `ythub_backup_${new Date().getTime()}.json`;
+      const blob = new Blob([JSON.stringify(appData, null, 2)], { type: "application/json" });
+      const file = new File([blob], fileName, { type: "application/json" });
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: 'Backup YT HUB', text: 'Ecco il mio ultimo backup della Dashboard YouTube.' });
+          setStatus("Condivisione avviata!");
+        } catch (err) { setStatus("Errore condivisione."); }
+      } else { alert("La condivisione diretta non è supportata."); }
+    };
+
+    window.fn_analyzeWithAI = function(vUrl) {
+      if (!vUrl || vUrl === 'null') { alert("Esegui prima la VERIFICA."); return; }
+      navigator.clipboard.writeText(vUrl).then(() => {
+        setStatus("Link copiato! Incollalo in NotebookLM.");
+        window.open(`https://notebooklm.google.com/notebook/${NOTEBOOK_ID}`, '_blank');
+      });
+    };
+
+    function syncFromDOM() {
+      const newState = [];
+      document.querySelectorAll(".sortable-list").forEach(listEl => {
+        const catId = listEl.id;
+        const original = appData.find(c => c.id === catId);
+        const channels = [];
+        listEl.querySelectorAll("[data-ch-id]").forEach(el => {
+          const chId = el.dataset.chId;
+          let foundCh = null;
+          for(const c of appData) { const match = c.channels.find(x => x.id === chId); if(match) { foundCh = match; break; } }
+          if(foundCh) channels.push(structuredClone(foundCh));
+        });
+        if(original) newState.push({ ...original, channels });
+      });
+      appData = newState;
+    }
+
+    window.fn_addSingleChannel = function() {
+      const name = prompt("Nome:"); const rawUrl = prompt("URL:"); if (!name || !rawUrl) return;
+      let id = rawUrl.includes('channel/') ? rawUrl.split('channel/')[1] : rawUrl.replace('@', '').split('/').pop();
+      let url = rawUrl.startsWith('http') ? rawUrl : `https://www.youtube.com/@${rawUrl.replace('@', '')}`;
+      appData.find(c => c.id === "inbox").channels.unshift({ id, name, url, isNew: true, latestVideoId: null, latestVideoTitle: null, latestVideoPublished: null, lastSeenVideoId: null });
+      persistData(); render();
+    };
+
+    window.fn_deleteChannel = function(chId, catId) {
+      const cat = appData.find(c => c.id === catId);
+      if (confirm(catId === "top-channels" ? "Rimuovere dai Top?" : "Eliminare?")) {
+        cat.channels = cat.channels.filter(ch => ch.id !== chId);
+        if (catId !== "top-channels") appData.forEach(c => { if (c.id === "top-channels") c.channels = c.channels.filter(ch => ch.id !== chId); });
+        persistData(); render();
+      }
+    };
+
+    window.fn_markSeen = function(id) {
+      appData.forEach(cat => { cat.channels.forEach(ch => { if (ch.id === id) { ch.isNew = false; ch.lastSeenVideoId = ch.latestVideoId || "seen_placeholder"; } }); });
+      persistData(); render();
+    };
+
+    window.fn_touchChannel = function(id) { fn_markSeen(id); };
+
+    window.fn_checkAllUpdates = async function() {
+      setStatus("Aggiornamento...");
+      const all = appData.flatMap(cat => cat.channels);
+      const unique = Array.from(new Set(all.map(ch => ch.id))).map(id => all.find(ch => ch.id === id));
+      for (const ch of unique) {
+        try {
+          const url = settings.useProxy ? settings.proxyUrlTemplate.replace("{ID}", ch.id) : `https://www.youtube.com/feeds/videos.xml?channel_id=${ch.id}`;
+          const resp = await fetch(url); const data = await resp.json();
+          if(data && data.videoId) {
+            const isNew = ch.lastSeenVideoId !== data.videoId;
+            appData.forEach(cat => cat.channels.filter(c => c.id === ch.id).forEach(inst => { if (isNew) inst.isNew = true; inst.latestVideoId = data.videoId; inst.latestVideoTitle = data.title; inst.latestVideoPublished = data.published; }));
+          }
+        } catch { }
+      }
+      persistData(); render();
+    };
+
+    function countChannels() { const ids = new Set(); appData.forEach(c => { if(c.id !== "top-channels") c.channels.forEach(ch => ids.add(ch.id)) }); return ids.size; }
+    window.fn_addCategory = function() { const name = prompt("Nome:"); if (!name) return; appData.push({ id: "c_" + Date.now(), title: name.toUpperCase(), color: "bg-blue-600", channels: [] }); persistData(); render(); };
+    function fn_deleteCategory(id) { if (!confirm("Eliminare?")) return; const idx = appData.findIndex(c => c.id === id); appData.find(c => c.id === "inbox").channels.push(...appData[idx].channels); appData.splice(idx, 1); persistData(); render(); }
+    window.fn_saveSettings = function() { settings.useProxy = document.getElementById("useProxyToggle").checked; settings.proxyUrlTemplate = document.getElementById("proxyUrlInput").value.trim(); persistSettings(); render(); };
+    window.fn_checkBadges = function() { appData.forEach(cat => { const b = document.getElementById("badge-" + cat.id); if (b) b.classList.toggle("hidden", !cat.channels.some(ch => (ch.isNew || ch.lastSeenVideoId === null))); }); };
+
+    window.fn_exportJson = function() {
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16).replace('T', '_');
+      const blob = new Blob([JSON.stringify(appData, null, 2)], { type: "application/json" });
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `ythub_backup_${ts}.json`; a.click();
+    };
+
+    document.getElementById("jsonFileInput").addEventListener("change", function(e) {
+      const file = e.target.files?.[0]; if (!file) return;
+      const r = new FileReader(); r.onload = () => { try { appData = JSON.parse(r.result); persistData(); render(); } catch { } finally { e.target.value = ""; } }; r.readAsText(file);
+    });
+
+    window.fn_reset = function() { if (confirm("Reset?")) { localStorage.clear(); location.reload(); } };
+    window.onload = () => { 
+        document.getElementById("useProxyToggle").checked = settings.useProxy; 
+        document.getElementById("proxyUrlInput").value = settings.proxyUrlTemplate; 
+        render(); 
+    };
+  </script>
+
+  <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+  <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+</body>
+</html>
