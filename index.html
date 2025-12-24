@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>YT HUB PRO - Cloud Email Sync</title>
+  <title>YT HUB PRO - Cloud Sync</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
@@ -100,7 +100,7 @@
   </div>
 
   <script>
-    // --- CONFIGURAZIONE GOOGLE (I TUOI DATI) ---
+    // --- CONFIGURAZIONE GOOGLE ---
     const CLIENT_ID = '530637025416-kbq28ucudmp4tdj7krlqjvmcamrv3dr9.apps.googleusercontent.com';
     const API_KEY = 'AIzaSyCGDLbdjDyKSAO7XhGLjrLrYvywUG4PhX0';
 
@@ -124,7 +124,7 @@
     let gapiInited = false;
     let driveFileId = null;
 
-    // --- LOGICA CORE ---
+    // --- FUNZIONI CORE ---
     function loadSettings() { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || { useProxy: false, proxyUrlTemplate: "" }; } catch { return { useProxy: false, proxyUrlTemplate: "" }; } }
     function persistSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
     function loadData() {
@@ -137,10 +137,11 @@
       } catch { return structuredClone(DEFAULT_DATA); }
     }
 
-    // --- AGGIORNATA PER DRIVE ---
     function persistData() { 
         localStorage.setItem(STORAGE_KEY, JSON.stringify(appData)); 
-        if (driveFileId) saveToDrive(); 
+        if (driveFileId && gapi.client.getToken()) {
+            saveToDrive(); 
+        }
     }
 
     function setStatus(msg) { document.getElementById("statusLine").textContent = msg || ""; }
@@ -198,10 +199,7 @@
         col.appendChild(list);
         board.appendChild(col);
         new Sortable(list, {
-          group: "channels",
-          animation: 150,
-          ghostClass: "ghost",
-          handle: ".drag-handle",
+          group: "channels", animation: 150, ghostClass: "ghost", handle: ".drag-handle",
           onAdd: function (evt) {
             if (evt.to.id === 'top-channels') {
               const itemEl = evt.item;
@@ -220,7 +218,7 @@
       setStatus(`Monitorando ${countChannels()} canali.`);
     }
 
-    // --- FUNZIONI GOOGLE DRIVE ---
+    // --- GOOGLE DRIVE LOGIC (FIXED) ---
     function gapiLoaded() {
         gapi.load('client', async () => {
             await gapi.client.init({ apiKey: API_KEY, discoveryDocs: [DISCOVERY_DOC] });
@@ -234,35 +232,57 @@
             scope: SCOPES,
             callback: '', 
         });
+
+        // AUTO-LOGIN AL CARICAMENTO
+        const wasConnected = localStorage.getItem("drive_connected") === "true";
+        if (wasConnected) {
+            setTimeout(() => {
+                tokenClient.callback = async (resp) => {
+                    if (resp.error) return;
+                    updateDriveButton(true);
+                    await initializeDriveFile();
+                };
+                tokenClient.requestAccessToken({ prompt: '' });
+            }, 1500);
+        }
     }
 
     async function handleAuthClick() {
         tokenClient.callback = async (resp) => {
             if (resp.error !== undefined) throw (resp);
-            document.getElementById('auth_button').innerHTML = '<i class="fas fa-cloud"></i> DRIVE ATTIVO';
-            document.getElementById('auth_button').classList.replace('bg-amber-600', 'bg-emerald-600');
+            localStorage.setItem("drive_connected", "true");
+            updateDriveButton(true);
             await initializeDriveFile();
         };
-        if (gapi.client.getToken() === null) {
-            tokenClient.requestAccessToken({ prompt: 'consent' });
+        tokenClient.requestAccessToken({ prompt: 'consent' });
+    }
+
+    function updateDriveButton(active) {
+        const btn = document.getElementById('auth_button');
+        if (active) {
+            btn.innerHTML = '<i class="fas fa-cloud"></i> DRIVE ATTIVO';
+            btn.classList.replace('bg-amber-600', 'bg-emerald-600');
         } else {
-            tokenClient.requestAccessToken({ prompt: '' });
+            btn.innerHTML = '<i class="fab fa-google"></i> ACCEDI DRIVE';
+            btn.classList.replace('bg-emerald-600', 'bg-amber-600');
         }
     }
 
     async function initializeDriveFile() {
         setStatus("Sincronizzazione Cloud...");
-        const response = await gapi.client.drive.files.list({
-            q: `name = '${SYNC_FILE_NAME}' and trashed = false`,
-            fields: 'files(id, name)',
-        });
-        const files = response.result.files;
-        if (files.length > 0) {
-            driveFileId = files[0].id;
-            await loadFromDrive();
-        } else {
-            await createDriveFile();
-        }
+        try {
+            const response = await gapi.client.drive.files.list({
+                q: `name = '${SYNC_FILE_NAME}' and trashed = false`,
+                fields: 'files(id, name)',
+            });
+            const files = response.result.files;
+            if (files.length > 0) {
+                driveFileId = files[0].id;
+                await loadFromDrive();
+            } else {
+                await createDriveFile();
+            }
+        } catch (err) { setStatus("Errore Cloud (riprova login)"); }
     }
 
     async function createDriveFile() {
@@ -274,10 +294,14 @@
 
     async function saveToDrive() {
         if (!driveFileId) return;
+        setStatus("Salvataggio...");
         const content = JSON.stringify(appData);
         await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`, {
             method: 'PATCH',
-            headers: { 'Authorization': 'Bearer ' + gapi.client.getToken().access_token, 'Content-Type': 'application/json' },
+            headers: { 
+                'Authorization': 'Bearer ' + gapi.client.getToken().access_token, 
+                'Content-Type': 'application/json' 
+            },
             body: content
         });
         setStatus("Sincronizzato su Drive");
@@ -285,31 +309,30 @@
 
     async function loadFromDrive() {
         const response = await gapi.client.drive.files.get({ fileId: driveFileId, alt: 'media' });
-        if (response.result) {
+        if (response.result && Array.isArray(response.result)) {
             appData = response.result;
             localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
             render();
             setStatus("Dati caricati dal Cloud");
+        } else {
+            // Se il file è vuoto o corrotto, salviamo i dati locali attuali su Drive
+            saveToDrive();
         }
     }
 
-    // --- ALTRE FUNZIONI UTILITY ---
+    // --- UTILITIES ---
     window.fn_shareBackup = async function() {
-      const fileName = `ythub_backup_${new Date().getTime()}.json`;
       const blob = new Blob([JSON.stringify(appData, null, 2)], { type: "application/json" });
-      const file = new File([blob], fileName, { type: "application/json" });
-      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-        try {
-          await navigator.share({ files: [file], title: 'Backup YT HUB', text: 'Ecco il mio ultimo backup della Dashboard YouTube.' });
-          setStatus("Condivisione avviata!");
-        } catch (err) { setStatus("Errore condivisione."); }
-      } else { alert("La condivisione diretta non è supportata."); }
+      const file = new File([blob], "ythub_backup.json", { type: "application/json" });
+      if (navigator.share) {
+        await navigator.share({ files: [file], title: 'Backup YT HUB' });
+      } else { alert("Share non supportato."); }
     };
 
     window.fn_analyzeWithAI = function(vUrl) {
-      if (!vUrl || vUrl === 'null') { alert("Esegui prima la VERIFICA."); return; }
+      if (!vUrl || vUrl === 'null') { alert("Verifica prima."); return; }
       navigator.clipboard.writeText(vUrl).then(() => {
-        setStatus("Link copiato! Incollalo in NotebookLM.");
+        setStatus("Link copiato!");
         window.open(`https://notebooklm.google.com/notebook/${NOTEBOOK_ID}`, '_blank');
       });
     };
@@ -341,15 +364,14 @@
 
     window.fn_deleteChannel = function(chId, catId) {
       const cat = appData.find(c => c.id === catId);
-      if (confirm(catId === "top-channels" ? "Rimuovere dai Top?" : "Eliminare?")) {
+      if (confirm("Eliminare?")) {
         cat.channels = cat.channels.filter(ch => ch.id !== chId);
-        if (catId !== "top-channels") appData.forEach(c => { if (c.id === "top-channels") c.channels = c.channels.filter(ch => ch.id !== chId); });
         persistData(); render();
       }
     };
 
     window.fn_markSeen = function(id) {
-      appData.forEach(cat => { cat.channels.forEach(ch => { if (ch.id === id) { ch.isNew = false; ch.lastSeenVideoId = ch.latestVideoId || "seen_placeholder"; } }); });
+      appData.forEach(cat => { cat.channels.forEach(ch => { if (ch.id === id) { ch.isNew = false; ch.lastSeenVideoId = ch.latestVideoId || "seen"; } }); });
       persistData(); render();
     };
 
@@ -379,9 +401,8 @@
     window.fn_checkBadges = function() { appData.forEach(cat => { const b = document.getElementById("badge-" + cat.id); if (b) b.classList.toggle("hidden", !cat.channels.some(ch => (ch.isNew || ch.lastSeenVideoId === null))); }); };
 
     window.fn_exportJson = function() {
-      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16).replace('T', '_');
       const blob = new Blob([JSON.stringify(appData, null, 2)], { type: "application/json" });
-      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `ythub_backup_${ts}.json`; a.click();
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `ythub_backup.json`; a.click();
     };
 
     document.getElementById("jsonFileInput").addEventListener("change", function(e) {
