@@ -122,6 +122,7 @@
     let settings = loadSettings();
     let tokenClient;
     let gapiInited = false;
+    let gisInited = false;
     let driveFileId = null;
 
     // --- FUNZIONI CORE ---
@@ -223,6 +224,7 @@
         gapi.load('client', async () => {
             await gapi.client.init({ apiKey: API_KEY, discoveryDocs: [DISCOVERY_DOC] });
             gapiInited = true;
+            checkAuthPersistence();
         });
     }
 
@@ -230,30 +232,28 @@
         tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: CLIENT_ID,
             scope: SCOPES,
-            callback: '', 
+            callback: async (resp) => {
+                if (resp.error !== undefined) throw (resp);
+                localStorage.setItem("drive_connected", "true");
+                updateDriveButton(true);
+                await initializeDriveFile();
+            },
         });
+        gisInited = true;
+        checkAuthPersistence();
+    }
 
-        // AUTO-LOGIN AL CARICAMENTO
-        const wasConnected = localStorage.getItem("drive_connected") === "true";
-        if (wasConnected) {
-            setTimeout(() => {
-                tokenClient.callback = async (resp) => {
-                    if (resp.error) return;
-                    updateDriveButton(true);
-                    await initializeDriveFile();
-                };
+    function checkAuthPersistence() {
+        if (gapiInited && gisInited) {
+            const wasConnected = localStorage.getItem("drive_connected") === "true";
+            if (wasConnected) {
+                console.log("Rilevato accesso precedente, ricollegamento...");
                 tokenClient.requestAccessToken({ prompt: '' });
-            }, 1500);
+            }
         }
     }
 
     async function handleAuthClick() {
-        tokenClient.callback = async (resp) => {
-            if (resp.error !== undefined) throw (resp);
-            localStorage.setItem("drive_connected", "true");
-            updateDriveButton(true);
-            await initializeDriveFile();
-        };
         tokenClient.requestAccessToken({ prompt: 'consent' });
     }
 
@@ -293,8 +293,8 @@
     }
 
     async function saveToDrive() {
-        if (!driveFileId) return;
-        setStatus("Salvataggio...");
+        if (!driveFileId || !gapi.client.getToken()) return;
+        setStatus("Salvataggio Cloud...");
         const content = JSON.stringify(appData);
         await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`, {
             method: 'PATCH',
@@ -314,8 +314,17 @@
             localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
             render();
             setStatus("Dati caricati dal Cloud");
+        } else if (response.body) { // Fix per caricamento body testo
+            try {
+               const data = JSON.parse(response.body);
+               if(Array.isArray(data)) {
+                   appData = data;
+                   localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+                   render();
+                   setStatus("Dati Cloud Pronti.");
+               }
+            } catch(e) { saveToDrive(); }
         } else {
-            // Se il file è vuoto o corrotto, salviamo i dati locali attuali su Drive
             saveToDrive();
         }
     }
@@ -411,6 +420,7 @@
     });
 
     window.fn_reset = function() { if (confirm("Reset?")) { localStorage.clear(); location.reload(); } };
+    
     window.onload = () => { 
         document.getElementById("useProxyToggle").checked = settings.useProxy; 
         document.getElementById("proxyUrlInput").value = settings.proxyUrlTemplate; 
