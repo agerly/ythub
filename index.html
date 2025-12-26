@@ -33,10 +33,19 @@
       break-inside: avoid;
     }
 
+    /* Rimozione scroll interno: la categoria si allunga col contenuto */
     .sortable-list { 
       min-height: 100px; 
       height: auto; 
       overflow: visible;
+    }
+
+    /* Titolo su due righe per evitare sovrapposizioni */
+    .line-clamp-2 {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;  
+      overflow: hidden;
     }
     
     .is-new-border { border-left: 4px solid #dc2626 !important; }
@@ -95,10 +104,10 @@
 
     <div class="max-w-[1600px] mx-auto mb-8 bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
       <div class="flex flex-col md:flex-row gap-4 md:items-center justify-between">
-        <div class="flex items-center gap-3"><i class="fas fa-sliders text-slate-400"></i><span class="text-sm font-semibold text-slate-700">Connettività Cloudflare</span></div>
+        <div class="flex items-center gap-3"><i class="fas fa-sliders text-slate-400"></i><span class="text-sm font-semibold text-slate-700">Configurazione Proxy</span></div>
         <div class="flex flex-1 max-w-2xl gap-3 justify-end items-center">
           <label class="flex items-center gap-2 text-sm font-bold text-slate-600"><input id="useProxyToggle" type="checkbox" class="accent-emerald-600" /> Proxy</label>
-          <input id="proxyUrlInput" type="text" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm outline-none" placeholder="URL Worker" />
+          <input id="proxyUrlInput" type="text" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm outline-none" placeholder="https://tuo-worker.workers.dev/?channel_id={ID}" />
           <button onclick="fn_saveSettings()" class="bg-slate-800 text-white px-6 py-2 rounded-xl font-bold text-sm shadow-sm">Salva</button>
         </div>
       </div>
@@ -108,14 +117,12 @@
   </div>
 
   <script>
-    // --- CONFIGURAZIONE GOOGLE ---
     const CLIENT_ID = '530637025416-kbq28ucudmp4tdj7krlqjvmcamrv3dr9.apps.googleusercontent.com';
     const API_KEY = 'AIzaSyCGDLbdjDyKSAO7XhGLjrLrYvywUG4PhX0';
     const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
     const SCOPES = 'https://www.googleapis.com/auth/drive.file';
     const SYNC_FILE_NAME = "ythub_cloud_sync.json";
 
-    // --- VARIABILI APP ---
     const STORAGE_KEY = "yt_hub_vstable";
     const SETTINGS_KEY = "yt_hub_settings";
     const NOTEBOOK_ID = "a0ccfd64-27b5-4cd5-988b-cb7565cda915";
@@ -127,12 +134,8 @@
 
     let appData = loadData();
     let settings = loadSettings();
-    let tokenClient;
-    let gapiInited = false;
-    let gisInited = false;
-    let driveFileId = null;
+    let tokenClient, gapiInited = false, gisInited = false, driveFileId = null;
 
-    // --- FUNZIONI CORE ---
     function loadSettings() { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || { useProxy: false, proxyUrlTemplate: "", isLocked: false }; } catch { return { useProxy: false, proxyUrlTemplate: "", isLocked: false }; } }
     function persistSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
     function loadData() {
@@ -161,18 +164,9 @@
     }
 
     function updateLockUI() {
-      const btn = document.getElementById("lockBtn");
-      const icon = document.getElementById("lockIcon");
-      const text = document.getElementById("lockText");
-      if (settings.isLocked) {
-        btn.classList.replace("bg-sky-500", "bg-slate-500");
-        icon.className = "fas fa-lock";
-        text.innerText = "SPOSTA: OFF";
-      } else {
-        btn.classList.replace("bg-slate-500", "bg-sky-500");
-        icon.className = "fas fa-lock-open";
-        text.innerText = "SPOSTA: ON";
-      }
+      const btn = document.getElementById("lockBtn"), icon = document.getElementById("lockIcon"), text = document.getElementById("lockText");
+      if (settings.isLocked) { btn.classList.replace("bg-sky-500", "bg-slate-500"); icon.className = "fas fa-lock"; text.innerText = "SPOSTA: OFF"; } 
+      else { btn.classList.replace("bg-slate-500", "bg-sky-500"); icon.className = "fas fa-lock-open"; text.innerText = "SPOSTA: ON"; }
     }
 
     function render() {
@@ -200,35 +194,37 @@
         const list = document.createElement("div");
         list.id = cat.id;
         list.className = "sortable-list bg-white p-3 rounded-b-2xl shadow-sm space-y-2 border border-slate-200";
+        
         cat.channels.forEach(ch => {
           const item = document.createElement("div");
           const isActuallyNew = ch.isNew === true || ch.lastSeenVideoId === null;
-          item.className = `flex items-center p-3 bg-white border border-slate-100 rounded-xl hover:shadow-md transition group ${isActuallyNew ? 'is-new-border' : ''}`;
+          item.className = `flex items-start p-3 bg-white border border-slate-100 rounded-xl hover:shadow-md transition group ${isActuallyNew ? 'is-new-border' : ''}`;
           item.dataset.chId = ch.id;
-          const dateLabel = ch.latestVideoPublished ? new Date(ch.latestVideoPublished).toLocaleDateString("it-IT", {day:'2-digit', month:'2-digit', year:'2-digit'}) : "n/d";
-          const titleColorClass = isActuallyNew ? "text-red-600 font-black" : "text-slate-400 font-medium";
+          
+          const dateLabel = ch.latestVideoPublished ? new Date(ch.latestVideoPublished).toLocaleDateString("it-IT", {day:'2-digit', month:'2-digit'}) : "--/--";
+          const titleColorClass = isActuallyNew ? "text-red-600 font-black" : "text-slate-500 font-medium";
           const videoUrlForAI = ch.latestVideoId ? `https://www.youtube.com/watch?v=${ch.latestVideoId}` : null;
+          const dragIcon = settings.isLocked ? '' : `<div class="drag-handle mt-1 mr-3 text-slate-200 group-hover:text-slate-400 transition-colors"><i class="fas fa-grip-vertical"></i></div>`;
           
-          const dragIcon = settings.isLocked ? '' : `<div class="drag-handle mr-3 text-slate-200 group-hover:text-slate-400 transition-colors"><i class="fas fa-grip-vertical"></i></div>`;
-          
-          // FEATURE: Aggiunta Durata se disponibile
-          const durationBadge = ch.latestVideoDuration ? `<span class="ml-1.5 px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded text-[9px] font-black">${ch.latestVideoDuration}</span>` : "";
+          const durationMarkup = ch.latestVideoDuration ? `<span class="bg-slate-800 text-white px-1 py-0.5 rounded text-[8px] font-black mr-2 tracking-tighter">${ch.latestVideoDuration}</span>` : "";
 
           item.innerHTML = `
             ${dragIcon}
             <div class="flex-1 min-w-0">
-              <div class="truncate text-sm font-bold text-slate-800">${ch.name}</div>
-              <div class="flex items-center min-w-0">
-                <div class="truncate text-[10px] mt-0.5 uppercase tracking-tight ${titleColorClass}">${ch.latestVideoTitle || 'In attesa di verifica...'}</div>
-                ${durationBadge}
+              <div class="truncate text-[11px] font-black text-slate-400 uppercase tracking-wider mb-0.5">${ch.name}</div>
+              <div class="line-clamp-2 text-[12px] leading-[1.3] mb-1.5 ${titleColorClass}">
+                ${ch.latestVideoTitle || 'In attesa di verifica...'}
+              </div>
+              <div class="flex items-center">
+                ${durationMarkup}
+                <span class="text-[9px] text-slate-400 font-bold tabular-nums uppercase">${dateLabel}</span>
               </div>
             </div>
-            <div class="flex items-center gap-1 ml-2">
-              <span class="text-[9px] text-slate-400 tabular-nums font-black mr-1">${dateLabel}</span>
-              <button class="text-slate-200 hover:text-emerald-500 p-1" onclick="fn_markSeen('${ch.id}')"><i class="fas fa-check-circle"></i></button>
-              <button class="text-slate-200 hover:text-red-500 p-1" onclick="fn_deleteChannel('${ch.id}', '${cat.id}')"><i class="fas fa-trash-alt text-xs"></i></button>
-              <button class="text-indigo-400 hover:text-indigo-600 p-1" onclick="fn_analyzeWithAI('${videoUrlForAI}')"><i class="fas fa-book-open text-sm"></i></button>
-              <a href="${ch.url}" target="_blank" class="text-slate-200 hover:text-red-600 p-1" onclick="fn_touchChannel('${ch.id}')"><i class="fab fa-youtube text-lg"></i></a>
+            <div class="flex items-center gap-1 ml-2 opacity-100 sm:opacity-40 group-hover:opacity-100 transition-opacity">
+              <button class="text-slate-300 hover:text-emerald-500 p-1" onclick="fn_markSeen('${ch.id}')"><i class="fas fa-check-circle"></i></button>
+              <button class="text-slate-300 hover:text-red-500 p-1" onclick="fn_deleteChannel('${ch.id}', '${cat.id}')"><i class="fas fa-trash-alt text-xs"></i></button>
+              <button class="text-indigo-400 hover:text-indigo-600 p-1" onclick="fn_analyzeWithAI('${videoUrlForAI}')"><i class="fas fa-book-open text-xs"></i></button>
+              <a href="${ch.url}" target="_blank" class="text-slate-300 hover:text-red-600 p-1" onclick="fn_touchChannel('${ch.id}')"><i class="fab fa-youtube text-lg"></i></a>
             </div>
           `;
           list.appendChild(item);
@@ -238,15 +234,12 @@
         board.appendChild(col);
         
         new Sortable(list, {
-          group: "channels", animation: 150, ghostClass: "ghost", handle: ".drag-handle",
-          disabled: settings.isLocked,
+          group: "channels", animation: 150, ghostClass: "ghost", handle: ".drag-handle", disabled: settings.isLocked,
           onAdd: function (evt) {
             if (evt.to.id === 'top-channels') {
               const itemEl = evt.item;
-              const alreadyExists = Array.from(evt.to.children).filter(child => child.dataset.chId === itemEl.dataset.chId).length > 1;
-              if (alreadyExists) evt.to.removeChild(itemEl);
-              const clone = itemEl.cloneNode(true);
-              evt.from.insertBefore(clone, evt.from.children[evt.oldIndex]);
+              if (Array.from(evt.to.children).filter(child => child.dataset.chId === itemEl.dataset.chId).length > 1) evt.to.removeChild(itemEl);
+              const clone = itemEl.cloneNode(true); evt.from.insertBefore(clone, evt.from.children[evt.oldIndex]);
             }
             syncFromDOM(); persistData(); render();
           },
@@ -254,40 +247,16 @@
         });
       });
       
-      new Sortable(board, { 
-        animation: 150, ghostClass: "ghost", handle: ".category-header", disabled: settings.isLocked,
-        onEnd: () => { syncFromDOM(); persistData(); render(); } 
-      });
-
+      new Sortable(board, { animation: 150, ghostClass: "ghost", handle: ".category-header", disabled: settings.isLocked, onEnd: () => { syncFromDOM(); persistData(); render(); } });
       fn_checkBadges();
       setStatus(`Monitorando ${countChannels()} canali.`);
     }
 
-    // --- DRIVE API ---
-    function gapiLoaded() { gapi.load('client', async () => { await gapi.client.init({ apiKey: API_KEY, discoveryDocs: [DISCOVERY_DOC] }); gapiInited = true; checkAuthPersistence(); }); }
-    function gisLoaded() { tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPES, callback: async (resp) => { if (resp.error !== undefined) throw (resp); localStorage.setItem("drive_connected", "true"); updateDriveButton(true); await initializeDriveFile(); }, }); gisInited = true; checkAuthPersistence(); }
-    function checkAuthPersistence() { if (gapiInited && gisInited) { if (localStorage.getItem("drive_connected") === "true") { tokenClient.requestAccessToken({ prompt: '' }); } } }
-    async function handleAuthClick() { tokenClient.requestAccessToken({ prompt: 'consent' }); }
-    function updateDriveButton(active) { const btn = document.getElementById('auth_button'); if (active) { btn.innerHTML = '<i class="fas fa-cloud"></i> DRIVE ATTIVO'; btn.classList.replace('bg-amber-600', 'bg-emerald-600'); } else { btn.innerHTML = '<i class="fab fa-google"></i> ACCEDI DRIVE'; btn.classList.replace('bg-emerald-600', 'bg-amber-600'); } }
-
-    async function initializeDriveFile() { setStatus("Sincronizzazione Cloud..."); try { const response = await gapi.client.drive.files.list({ q: `name = '${SYNC_FILE_NAME}' and trashed = false`, fields: 'files(id, name)' }); const files = response.result.files; if (files.length > 0) { driveFileId = files[0].id; await loadFromDrive(); } else { await createDriveFile(); } } catch (err) { setStatus("Errore Cloud (riprova login)"); } }
-    async function createDriveFile() { const metadata = { name: SYNC_FILE_NAME, mimeType: 'application/json' }; const response = await gapi.client.drive.files.create({ resource: metadata, fields: 'id' }); driveFileId = response.result.id; saveToDrive(); }
-    async function saveToDrive() { if (!driveFileId || !gapi.client.getToken()) return; setStatus("Salvataggio Cloud..."); const syncPayload = { appData, settings }; await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`, { method: 'PATCH', headers: { 'Authorization': 'Bearer ' + gapi.client.getToken().access_token, 'Content-Type': 'application/json' }, body: JSON.stringify(syncPayload) }); setStatus("Sincronizzato su Drive"); }
-
-    async function loadFromDrive() {
-        const response = await gapi.client.drive.files.get({ fileId: driveFileId, alt: 'media' });
-        let cloudData = response.result || JSON.parse(response.body);
-        if (cloudData.appData && cloudData.settings) { appData = cloudData.appData; settings = cloudData.settings; persistSettings(); updateLockUI(); } 
-        else if (Array.isArray(cloudData)) { appData = cloudData; }
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
-        render(); setStatus("Sincronizzato.");
-    }
-
-    // --- FUNZIONALITÀ ---
+    // --- LOGICA AGGIORNAMENTO CON DURATA ---
     window.fn_checkAllUpdates = async function() {
         const all = appData.flatMap(cat => cat.channels);
         const unique = Array.from(new Set(all.map(ch => ch.id))).map(id => all.find(ch => ch.id === id));
-        let processed = 0; const total = unique.length;
+        let processed = 0, total = unique.length;
 
         for (const ch of unique) {
             processed++;
@@ -305,64 +274,69 @@
                                 inst.latestVideoId = data.videoId;
                                 inst.latestVideoTitle = data.title;
                                 inst.latestVideoPublished = data.published;
-                                inst.latestVideoDuration = data.duration || null; // Salva la durata se disponibile dal proxy
+                                inst.latestVideoDuration = data.duration || null;
                                 hasChanged = true;
                             }
                         });
                     });
                     if (hasChanged) render(); 
                 }
-            } catch (err) { console.warn("Errore per " + ch.name); }
+            } catch (err) { console.warn(err); }
         }
-        persistData(); render(); setStatus(`Monitorando ${countChannels()} canali.`);
+        persistData(); render();
     };
 
-    window.fn_shareBackup = async function() { const blob = new Blob([JSON.stringify(appData, null, 2)], { type: "application/json" }); const file = new File([blob], "ythub_backup.json", { type: "application/json" }); if (navigator.share) { await navigator.share({ files: [file], title: 'Backup YT HUB' }); } else { alert("Share non supportato."); } };
-
-    window.fn_analyzeWithAI = function(vUrl) {
-      if (!vUrl || vUrl === 'null') { alert("Verifica prima."); return; }
-      navigator.clipboard.writeText(vUrl).then(() => { setStatus("Link copiato!"); window.open(`https://notebooklm.google.com/notebook/${NOTEBOOK_ID}`, '_blank'); });
-    };
-
-    function syncFromDOM() {
-      const newState = [];
-      document.querySelectorAll(".sortable-list").forEach(listEl => {
-        const catId = listEl.id; const original = appData.find(c => c.id === catId); const channels = [];
-        listEl.querySelectorAll("[data-ch-id]").forEach(el => {
-          const chId = el.dataset.chId; let foundCh = null;
-          for(const c of appData) { const match = c.channels.find(x => x.id === chId); if(match) { foundCh = match; break; } }
-          if(foundCh) channels.push(structuredClone(foundCh));
-        });
-        if(original) newState.push({ ...original, channels });
-      });
-      appData = newState;
-    }
-
+    // --- DRIVE API BOILERPLATE ---
+    function gapiLoaded() { gapi.load('client', async () => { await gapi.client.init({ apiKey: API_KEY, discoveryDocs: [DISCOVERY_DOC] }); gapiInited = true; checkAuthPersistence(); }); }
+    function gisLoaded() { tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPES, callback: async (resp) => { localStorage.setItem("drive_connected", "true"); updateDriveButton(true); await initializeDriveFile(); } }); gisInited = true; checkAuthPersistence(); }
+    function checkAuthPersistence() { if (gapiInited && gisInited && localStorage.getItem("drive_connected") === "true") tokenClient.requestAccessToken({ prompt: '' }); }
+    async function handleAuthClick() { tokenClient.requestAccessToken({ prompt: 'consent' }); }
+    function updateDriveButton(active) { const btn = document.getElementById('auth_button'); if (active) { btn.innerHTML = '<i class="fas fa-cloud"></i> DRIVE ATTIVO'; btn.classList.replace('bg-amber-600', 'bg-emerald-600'); } else { btn.innerHTML = '<i class="fab fa-google"></i> ACCEDI DRIVE'; btn.classList.replace('bg-emerald-600', 'bg-amber-600'); } }
+    async function initializeDriveFile() { try { const response = await gapi.client.drive.files.list({ q: `name = '${SYNC_FILE_NAME}' and trashed = false` }); const files = response.result.files; if (files.length > 0) { driveFileId = files[0].id; await loadFromDrive(); } else { await createDriveFile(); } } catch { } }
+    async function createDriveFile() { const response = await gapi.client.drive.files.create({ resource: { name: SYNC_FILE_NAME, mimeType: 'application/json' } }); driveFileId = response.result.id; saveToDrive(); }
+    async function saveToDrive() { if (!driveFileId || !gapi.client.getToken()) return; await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`, { method: 'PATCH', headers: { 'Authorization': 'Bearer ' + gapi.client.getToken().access_token, 'Content-Type': 'application/json' }, body: JSON.stringify({ appData, settings }) }); }
+    async function loadFromDrive() { const response = await gapi.client.drive.files.get({ fileId: driveFileId, alt: 'media' }); const cloudData = response.result || JSON.parse(response.body); if (cloudData.appData) { appData = cloudData.appData; settings = cloudData.settings; persistSettings(); updateLockUI(); } localStorage.setItem(STORAGE_KEY, JSON.stringify(appData)); render(); }
+    
+    // --- UTILITIES ---
     window.fn_addSingleChannel = function() {
-      const name = prompt("Nome:"); const rawUrl = prompt("URL:"); if (!name || !rawUrl) return;
+      const name = prompt("Nome:"), rawUrl = prompt("URL:"); if (!name || !rawUrl) return;
       let id = rawUrl.includes('channel/') ? rawUrl.split('channel/')[1] : rawUrl.replace('@', '').split('/').pop();
       let url = rawUrl.startsWith('http') ? rawUrl : `https://www.youtube.com/@${rawUrl.replace('@', '')}`;
       appData.find(c => c.id === "inbox").channels.unshift({ id, name, url, isNew: true, latestVideoId: null, latestVideoTitle: null, latestVideoPublished: null, latestVideoDuration: null, lastSeenVideoId: null });
       persistData(); render();
     };
 
-    window.fn_deleteChannel = function(chId, catId) { const cat = appData.find(c => c.id === catId); if (confirm("Eliminare?")) { cat.channels = cat.channels.filter(ch => ch.id !== chId); persistData(); render(); } };
-    window.fn_markSeen = function(id) { appData.forEach(cat => { cat.channels.forEach(ch => { if (ch.id === id) { ch.isNew = false; ch.lastSeenVideoId = ch.latestVideoId || "seen"; } }); }); persistData(); render(); };
-    window.fn_touchChannel = function(id) { fn_markSeen(id); };
+    window.fn_markSeen = function(id) { appData.forEach(cat => cat.channels.forEach(ch => { if (ch.id === id) { ch.isNew = false; ch.lastSeenVideoId = ch.latestVideoId; } })); persistData(); render(); };
+    window.fn_deleteChannel = function(chId, catId) { if (confirm("Eliminare?")) { const cat = appData.find(c => c.id === catId); cat.channels = cat.channels.filter(ch => ch.id !== chId); persistData(); render(); } };
+    window.fn_analyzeWithAI = function(vUrl) { if (!vUrl) return; navigator.clipboard.writeText(vUrl); window.open(`https://notebooklm.google.com/notebook/${NOTEBOOK_ID}`, '_blank'); };
     function countChannels() { const ids = new Set(); appData.forEach(c => { if(c.id !== "top-channels") c.channels.forEach(ch => ids.add(ch.id)) }); return ids.size; }
-    window.fn_addCategory = function() { const name = prompt("Nome:"); if (!name) return; appData.push({ id: "c_" + Date.now(), title: name.toUpperCase(), color: "bg-blue-600", channels: [] }); persistData(); render(); };
-    function fn_deleteCategory(id) { if (!confirm("Eliminare?")) return; const idx = appData.findIndex(c => c.id === id); appData.find(c => c.id === "inbox").channels.push(...appData[idx].channels); appData.splice(idx, 1); persistData(); render(); }
+    window.fn_addCategory = function() { const n = prompt("Nome:"); if (n) { appData.push({ id: "c_" + Date.now(), title: n.toUpperCase(), color: "bg-blue-600", channels: [] }); persistData(); render(); } };
+    function fn_deleteCategory(id) { if (confirm("Eliminare?")) { const i = appData.findIndex(c => c.id === id); appData.find(c => c.id === "inbox").channels.push(...appData[i].channels); appData.splice(i, 1); persistData(); render(); } }
     window.fn_saveSettings = function() { settings.useProxy = document.getElementById("useProxyToggle").checked; settings.proxyUrlTemplate = document.getElementById("proxyUrlInput").value.trim(); persistSettings(); render(); if(driveFileId) saveToDrive(); };
-    window.fn_checkBadges = function() { appData.forEach(cat => { const b = document.getElementById("badge-" + cat.id); if (b) b.classList.toggle("hidden", !cat.channels.some(ch => (ch.isNew || ch.lastSeenVideoId === null))); }); };
+    window.fn_checkBadges = function() { appData.forEach(cat => { const b = document.getElementById("badge-" + cat.id); if (b) b.classList.toggle("hidden", !cat.channels.some(ch => ch.isNew)); }); };
     window.fn_exportJson = function() { const blob = new Blob([JSON.stringify(appData, null, 2)], { type: "application/json" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `ythub_backup.json`; a.click(); };
+    window.fn_reset = function() { if (confirm("Reset totale?")) { localStorage.clear(); location.reload(); } };
+    window.fn_shareBackup = async function() { const blob = new Blob([JSON.stringify(appData, null, 2)], { type: "application/json" }); const file = new File([blob], "ythub_backup.json", { type: "application/json" }); if (navigator.share) { await navigator.share({ files: [file], title: 'Backup YT HUB' }); } else { alert("Share non supportato."); } };
+
+    function syncFromDOM() {
+      const newState = [];
+      document.querySelectorAll(".sortable-list").forEach(listEl => {
+        const catId = listEl.id, original = appData.find(c => c.id === catId), channels = [];
+        listEl.querySelectorAll("[data-ch-id]").forEach(el => {
+          const chId = el.dataset.chId; let found = null;
+          for(const c of appData) { const m = c.channels.find(x => x.id === chId); if(m) { found = m; break; } }
+          if(found) channels.push(structuredClone(found));
+        });
+        if(original) newState.push({ ...original, channels });
+      });
+      appData = newState;
+    }
 
     document.getElementById("jsonFileInput").addEventListener("change", function(e) {
       const file = e.target.files?.[0]; if (!file) return;
       const r = new FileReader(); r.onload = () => { try { appData = JSON.parse(r.result); persistData(); render(); } catch { } finally { e.target.value = ""; } }; r.readAsText(file);
     });
 
-    window.fn_reset = function() { if (confirm("Reset?")) { localStorage.clear(); location.reload(); } };
-    
     window.onload = () => { 
         document.getElementById("useProxyToggle").checked = settings.useProxy; 
         document.getElementById("proxyUrlInput").value = settings.proxyUrlTemplate; 
