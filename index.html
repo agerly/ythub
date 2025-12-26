@@ -33,12 +33,12 @@
       break-inside: avoid;
     }
 
-    /* Rimosso max-height e overflow-y per evitare lo scroll interno */
-.sortable-list { 
-  min-height: 50px; 
-  height: auto; 
-}
-
+    /* Modificato: rimosso scroll interno, la lista si allunga col contenuto */
+    .sortable-list { 
+      min-height: 100px; 
+      height: auto; 
+      overflow: visible;
+    }
     
     .is-new-border { border-left: 4px solid #dc2626 !important; }
   </style>
@@ -112,7 +112,6 @@
     // --- CONFIGURAZIONE GOOGLE ---
     const CLIENT_ID = '530637025416-kbq28ucudmp4tdj7krlqjvmcamrv3dr9.apps.googleusercontent.com';
     const API_KEY = 'AIzaSyCGDLbdjDyKSAO7XhGLjrLrYvywUG4PhX0';
-
     const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
     const SCOPES = 'https://www.googleapis.com/auth/drive.file';
     const SYNC_FILE_NAME = "ythub_cloud_sync.json";
@@ -147,7 +146,6 @@
       } catch { return structuredClone(DEFAULT_DATA); }
     }
 
-    // MODIFICATO: PersistData ora sincronizza tutto (dati + impostazioni)
     function persistData() { 
         localStorage.setItem(STORAGE_KEY, JSON.stringify(appData)); 
         if (driveFileId && gapi.client.getToken()) {
@@ -157,13 +155,11 @@
 
     function setStatus(msg) { document.getElementById("statusLine").textContent = msg || ""; }
 
-    // --- LOGICA BLOCO SPOSTAMENTO ---
     function fn_toggleLock() {
       settings.isLocked = !settings.isLocked;
       persistSettings();
       updateLockUI();
       render();
-      // Sincronizza subito lo stato del lucchetto sul Cloud
       if (driveFileId) saveToDrive();
     }
 
@@ -267,7 +263,7 @@
       setStatus(`Monitorando ${countChannels()} canali.`);
     }
 
-    // --- GOOGLE DRIVE LOGIC (SYNCING SETTINGS + DATA) ---
+    // --- DRIVE API ---
     function gapiLoaded() {
         gapi.load('client', async () => {
             await gapi.client.init({ apiKey: API_KEY, discoveryDocs: [DISCOVERY_DOC] });
@@ -278,8 +274,7 @@
 
     function gisLoaded() {
         tokenClient = google.accounts.oauth2.initTokenClient({
-            client_id: CLIENT_ID,
-            scope: SCOPES,
+            client_id: CLIENT_ID, scope: SCOPES,
             callback: async (resp) => {
                 if (resp.error !== undefined) throw (resp);
                 localStorage.setItem("drive_connected", "true");
@@ -293,16 +288,13 @@
 
     function checkAuthPersistence() {
         if (gapiInited && gisInited) {
-            const wasConnected = localStorage.getItem("drive_connected") === "true";
-            if (wasConnected) {
+            if (localStorage.getItem("drive_connected") === "true") {
                 tokenClient.requestAccessToken({ prompt: '' });
             }
         }
     }
 
-    async function handleAuthClick() {
-        tokenClient.requestAccessToken({ prompt: 'consent' });
-    }
+    async function handleAuthClick() { tokenClient.requestAccessToken({ prompt: 'consent' }); }
 
     function updateDriveButton(active) {
         const btn = document.getElementById('auth_button');
@@ -318,17 +310,10 @@
     async function initializeDriveFile() {
         setStatus("Sincronizzazione Cloud...");
         try {
-            const response = await gapi.client.drive.files.list({
-                q: `name = '${SYNC_FILE_NAME}' and trashed = false`,
-                fields: 'files(id, name)',
-            });
+            const response = await gapi.client.drive.files.list({ q: `name = '${SYNC_FILE_NAME}' and trashed = false`, fields: 'files(id, name)' });
             const files = response.result.files;
-            if (files.length > 0) {
-                driveFileId = files[0].id;
-                await loadFromDrive();
-            } else {
-                await createDriveFile();
-            }
+            if (files.length > 0) { driveFileId = files[0].id; await loadFromDrive(); } 
+            else { await createDriveFile(); }
         } catch (err) { setStatus("Errore Cloud (riprova login)"); }
     }
 
@@ -339,53 +324,75 @@
         saveToDrive();
     }
 
-    // MODIFICATO: Ora salva un oggetto con dati e impostazioni
     async function saveToDrive() {
         if (!driveFileId || !gapi.client.getToken()) return;
         setStatus("Salvataggio Cloud...");
-        const syncPayload = {
-            appData: appData,
-            settings: settings
-        };
+        const syncPayload = { appData, settings };
         await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`, {
             method: 'PATCH',
-            headers: { 
-                'Authorization': 'Bearer ' + gapi.client.getToken().access_token, 
-                'Content-Type': 'application/json' 
-            },
+            headers: { 'Authorization': 'Bearer ' + gapi.client.getToken().access_token, 'Content-Type': 'application/json' },
             body: JSON.stringify(syncPayload)
         });
         setStatus("Sincronizzato su Drive");
     }
 
-    // MODIFICATO: Ora ripristina sia i dati che lo stato del lucchetto
     async function loadFromDrive() {
         const response = await gapi.client.drive.files.get({ fileId: driveFileId, alt: 'media' });
         let cloudData = response.result || JSON.parse(response.body);
-        
         if (cloudData.appData && cloudData.settings) {
-            // Nuova struttura: ripristina entrambi
             appData = cloudData.appData;
             settings = cloudData.settings;
             persistSettings();
             updateLockUI();
         } else if (Array.isArray(cloudData)) {
-            // Vecchia struttura (solo array): ripristina solo i canali
             appData = cloudData;
         }
-
         localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
         render();
         setStatus("Sincronizzato.");
     }
 
-    // --- UTILITIES ---
+    // --- FUNZIONALITÀ AGGIORNATE ---
+    window.fn_checkAllUpdates = async function() {
+        const all = appData.flatMap(cat => cat.channels);
+        const unique = Array.from(new Set(all.map(ch => ch.id))).map(id => all.find(ch => ch.id === id));
+        let processed = 0;
+        const total = unique.length;
+
+        for (const ch of unique) {
+            processed++;
+            setStatus(`Verifica: ${processed} / ${total}...`);
+            try {
+                const url = settings.useProxy ? settings.proxyUrlTemplate.replace("{ID}", ch.id) : `https://www.youtube.com/feeds/videos.xml?channel_id=${ch.id}`;
+                const resp = await fetch(url); 
+                const data = await resp.json();
+                if(data && data.videoId) {
+                    let hasChanged = false;
+                    appData.forEach(cat => {
+                        cat.channels.filter(c => c.id === ch.id).forEach(inst => {
+                            if (inst.lastSeenVideoId !== data.videoId) {
+                                inst.isNew = true;
+                                inst.latestVideoId = data.videoId;
+                                inst.latestVideoTitle = data.title;
+                                inst.latestVideoPublished = data.published;
+                                hasChanged = true;
+                            }
+                        });
+                    });
+                    if (hasChanged) render(); 
+                }
+            } catch (err) { console.warn("Errore per " + ch.name); }
+        }
+        persistData();
+        render();
+        setStatus(`Monitorando ${countChannels()} canali.`);
+    };
+
     window.fn_shareBackup = async function() {
       const blob = new Blob([JSON.stringify(appData, null, 2)], { type: "application/json" });
       const file = new File([blob], "ythub_backup.json", { type: "application/json" });
-      if (navigator.share) {
-        await navigator.share({ files: [file], title: 'Backup YT HUB' });
-      } else { alert("Share non supportato."); }
+      if (navigator.share) { await navigator.share({ files: [file], title: 'Backup YT HUB' }); } 
+      else { alert("Share non supportato."); }
     };
 
     window.fn_analyzeWithAI = function(vUrl) {
@@ -423,10 +430,7 @@
 
     window.fn_deleteChannel = function(chId, catId) {
       const cat = appData.find(c => c.id === catId);
-      if (confirm("Eliminare?")) {
-        cat.channels = cat.channels.filter(ch => ch.id !== chId);
-        persistData(); render();
-      }
+      if (confirm("Eliminare?")) { cat.channels = cat.channels.filter(ch => ch.id !== chId); persistData(); render(); }
     };
 
     window.fn_markSeen = function(id) {
@@ -436,28 +440,30 @@
 
     window.fn_touchChannel = function(id) { fn_markSeen(id); };
 
-    window.fn_checkAllUpdates = async function() {
-      setStatus("Aggiornamento...");
-      const all = appData.flatMap(cat => cat.channels);
-      const unique = Array.from(new Set(all.map(ch => ch.id))).map(id => all.find(ch => ch.id === id));
-      for (const ch of unique) {
-        try {
-          const url = settings.useProxy ? settings.proxyUrlTemplate.replace("{ID}", ch.id) : `https://www.youtube.com/feeds/videos.xml?channel_id=${ch.id}`;
-          const resp = await fetch(url); const data = await resp.json();
-          if(data && data.videoId) {
-            const isNew = ch.lastSeenVideoId !== data.videoId;
-            appData.forEach(cat => cat.channels.filter(c => c.id === ch.id).forEach(inst => { if (isNew) inst.isNew = true; inst.latestVideoId = data.videoId; inst.latestVideoTitle = data.title; inst.latestVideoPublished = data.published; }));
-          }
-        } catch { }
-      }
-      persistData(); render();
-    };
-
     function countChannels() { const ids = new Set(); appData.forEach(c => { if(c.id !== "top-channels") c.channels.forEach(ch => ids.add(ch.id)) }); return ids.size; }
-    window.fn_addCategory = function() { const name = prompt("Nome:"); if (!name) return; appData.push({ id: "c_" + Date.now(), title: name.toUpperCase(), color: "bg-blue-600", channels: [] }); persistData(); render(); };
-    function fn_deleteCategory(id) { if (!confirm("Eliminare?")) return; const idx = appData.findIndex(c => c.id === id); appData.find(c => c.id === "inbox").channels.push(...appData[idx].channels); appData.splice(idx, 1); persistData(); render(); }
-    window.fn_saveSettings = function() { settings.useProxy = document.getElementById("useProxyToggle").checked; settings.proxyUrlTemplate = document.getElementById("proxyUrlInput").value.trim(); persistSettings(); render(); if(driveFileId) saveToDrive(); };
-    window.fn_checkBadges = function() { appData.forEach(cat => { const b = document.getElementById("badge-" + cat.id); if (b) b.classList.toggle("hidden", !cat.channels.some(ch => (ch.isNew || ch.lastSeenVideoId === null))); }); };
+    
+    window.fn_addCategory = function() { 
+        const name = prompt("Nome:"); if (!name) return; 
+        appData.push({ id: "c_" + Date.now(), title: name.toUpperCase(), color: "bg-blue-600", channels: [] }); 
+        persistData(); render(); 
+    };
+    
+    function fn_deleteCategory(id) { 
+        if (!confirm("Eliminare?")) return; 
+        const idx = appData.findIndex(c => c.id === id); 
+        appData.find(c => c.id === "inbox").channels.push(...appData[idx].channels); 
+        appData.splice(idx, 1); persistData(); render(); 
+    }
+    
+    window.fn_saveSettings = function() { 
+        settings.useProxy = document.getElementById("useProxyToggle").checked; 
+        settings.proxyUrlTemplate = document.getElementById("proxyUrlInput").value.trim(); 
+        persistSettings(); render(); if(driveFileId) saveToDrive(); 
+    };
+    
+    window.fn_checkBadges = function() { 
+        appData.forEach(cat => { const b = document.getElementById("badge-" + cat.id); if (b) b.classList.toggle("hidden", !cat.channels.some(ch => (ch.isNew || ch.lastSeenVideoId === null))); }); 
+    };
 
     window.fn_exportJson = function() {
       const blob = new Blob([JSON.stringify(appData, null, 2)], { type: "application/json" });
