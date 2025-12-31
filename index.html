@@ -48,6 +48,11 @@
     
     .is-new-border { border-left: 4px solid #dc2626 !important; }
     body { transition: background-color 0.3s ease; }
+
+    .dark ::-webkit-scrollbar { width: 8px; }
+    .dark ::-webkit-scrollbar-track { background: #1e293b; }
+    .dark ::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
+    .dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
   </style>
 </head>
 
@@ -88,11 +93,11 @@
           </button>
 
           <button onclick="fn_addSingleChannel()" class="bg-red-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-red-700 transition flex items-center gap-2 text-xs shadow-sm">
-            <i class="fas fa-play-circle"></i> CANALE
+            <i class="fas fa-plus"></i> CANALE
           </button>
           
-          <button onclick="fn_checkAllUpdates()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-emerald-700 transition flex items-center gap-2 text-xs shadow-sm">
-            <i class="fas fa-rotate"></i> VERIFICA VELOCE
+          <button id="updateAllBtn" onclick="fn_checkAllUpdates()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-emerald-700 transition flex items-center gap-2 text-xs shadow-sm">
+            <i id="updateIcon" class="fas fa-rotate"></i> VERIFICA VELOCE
           </button>
 
           <button id="auth_button" onclick="handleAuthClick()" class="bg-amber-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-amber-700 transition flex items-center gap-2 text-xs shadow-sm">
@@ -113,7 +118,9 @@
         <div class="flex items-center gap-3"><i class="fas fa-sliders text-slate-400"></i><span class="text-sm font-semibold text-slate-700 dark:text-slate-300">Opzioni</span></div>
         <div class="flex flex-1 max-w-2xl gap-3 justify-end items-center">
           <button onclick="fn_addCategory()" class="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 transition text-xs shadow-sm">+ CATEGORIA</button>
-          <label class="flex items-center gap-2 text-sm font-bold text-slate-600 dark:text-slate-400"><input id="useProxyToggle" type="checkbox" class="accent-emerald-600" /> Proxy</label>
+          <label class="flex items-center gap-2 text-sm font-bold text-slate-600 dark:text-slate-400">
+            <input id="useProxyToggle" type="checkbox" class="accent-emerald-600 w-4 h-4" /> Proxy
+          </label>
           <input id="proxyUrlInput" type="text" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm outline-none" placeholder="https://tuo-worker.../?channel_id={ID}" />
           <button onclick="fn_saveSettings()" class="bg-slate-800 dark:bg-slate-600 text-white px-6 py-2 rounded-xl font-bold text-sm shadow-sm">Salva</button>
         </div>
@@ -124,6 +131,7 @@
   </div>
 
   <script>
+    // --- COSTANTI E CONFIG ---
     const CLIENT_ID = '530637025416-kbq28ucudmp4tdj7krlqjvmcamrv3dr9.apps.googleusercontent.com';
     const API_KEY = 'AIzaSyCGDLbdjDyKSAO7XhGLjrLrYvywUG4PhX0';
     const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
@@ -143,6 +151,7 @@
     let searchTerm = "";
     let tokenClient, gapiInited = false, gisInited = false, driveFileId = null;
 
+    // --- CARICAMENTO / SALVATAGGIO ---
     function loadSettings() { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || { useProxy: false, proxyUrlTemplate: "", isLocked: false, isDark: false, isCompact: false }; } catch { return { useProxy: false, proxyUrlTemplate: "", isLocked: false, isDark: false, isCompact: false }; } }
     function persistSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
     function loadData() {
@@ -157,12 +166,12 @@
     function persistData() { localStorage.setItem(STORAGE_KEY, JSON.stringify(appData)); if (driveFileId && gapi.client.getToken()) { saveToDrive(); } }
     function setStatus(msg) { document.getElementById("statusLine").textContent = msg || ""; }
 
+    // --- UI HELPERS ---
     function applyTheme() {
       const icon = document.getElementById("darkIcon");
       if (settings.isDark) { document.documentElement.classList.add('dark'); icon.className = "fas fa-sun"; } 
       else { document.documentElement.classList.remove('dark'); icon.className = "fas fa-moon"; }
     }
-
     function fn_toggleDarkMode() { settings.isDark = !settings.isDark; persistSettings(); applyTheme(); }
     function updateCompactUI() {
       const btn = document.getElementById("compactBtn"), text = document.getElementById("compactText");
@@ -171,15 +180,7 @@
     }
     function fn_toggleCompact() { settings.isCompact = !settings.isCompact; persistSettings(); updateCompactUI(); render(); }
     function fn_handleSearch() { searchTerm = document.getElementById("searchInput").value.toLowerCase(); render(); }
-
-    function fn_toggleLock() {
-      settings.isLocked = !settings.isLocked;
-      persistSettings();
-      updateLockUI();
-      render(); 
-      if (driveFileId) saveToDrive();
-    }
-
+    function fn_toggleLock() { settings.isLocked = !settings.isLocked; persistSettings(); updateLockUI(); render(); }
     function updateLockUI() {
       const btn = document.getElementById("lockBtn"), icon = document.getElementById("lockIcon"), text = document.getElementById("lockText");
       if (settings.isLocked) { 
@@ -191,10 +192,13 @@
       }
     }
 
+    // --- RENDER CORE ---
     function render(isUpdating = false) {
       const board = document.getElementById("mainBoard");
       board.innerHTML = "";
       
+      const topChannels = appData.find(c => c.id === "top-channels").channels.map(c => c.id);
+
       appData.forEach(cat => {
         const filteredChannels = cat.channels.filter(ch => 
             ch.name.toLowerCase().includes(searchTerm) || (ch.latestVideoTitle && ch.latestVideoTitle.toLowerCase().includes(searchTerm))
@@ -229,7 +233,8 @@
         
         filteredChannels.forEach(ch => {
           const item = document.createElement("div");
-          const isActuallyNew = ch.isNew === true || ch.lastSeenVideoId === null;
+          const isActuallyNew = ch.isNew === true;
+          const isFavorite = topChannels.includes(ch.id);
           const paddingClass = settings.isCompact ? 'p-1.5' : 'p-3';
           const titleSize = settings.isCompact ? 'text-[12px]' : 'text-sm';
           const videoTitleSize = settings.isCompact ? 'text-[9px]' : 'text-[10px]';
@@ -242,25 +247,28 @@
           const dragIcon = settings.isLocked ? '' : `<div class="drag-handle mr-2 text-slate-200 dark:text-slate-600 group-hover:text-slate-400 transition-colors"><i class="fas fa-grip-vertical"></i></div>`;
           const durationMarkup = ch.latestVideoDuration ? `<span class="bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-1 py-0.5 rounded text-[8px] font-black uppercase mr-2">${ch.latestVideoDuration}</span>` : "";
 
-          // Link al video se disponibile, altrimenti al canale
           const videoWatchUrl = ch.latestVideoId ? `https://www.youtube.com/watch?v=${ch.latestVideoId}` : ch.url;
 
           item.innerHTML = `
             ${dragIcon}
             <div class="flex-1 min-w-0">
-              <div class="truncate ${titleSize} font-bold text-slate-800 dark:text-slate-100 leading-tight">${ch.name}</div>
+              <a href="${ch.url}" target="_blank" class="truncate ${titleSize} font-bold text-slate-800 dark:text-slate-100 leading-tight hover:text-red-600 transition-colors block">${ch.name}</a>
               <a href="${videoWatchUrl}" target="_blank" onclick="fn_markSeen('${ch.id}')" 
                  class="block truncate ${videoTitleSize} mt-0.5 uppercase tracking-tight ${titleColorClass} hover:underline">
-                 ${ch.latestVideoTitle || 'In attesa...'}
+                 ${ch.latestVideoTitle || 'Nessun video recente'}
               </a>
               <div class="flex items-center mt-0.5">
                 ${durationMarkup} <span class="text-[9px] text-slate-400 font-bold uppercase tracking-widest tabular-nums">${dateLabel}</span>
               </div>
             </div>
             <div class="flex items-center gap-1 ml-2">
+              <button class="p-1 transition-colors ${isFavorite ? 'text-rose-500' : 'text-slate-200 dark:text-slate-600 hover:text-rose-400'}" 
+                      onclick="fn_toggleFavorite('${ch.id}')" title="Preferito">
+                <i class="${isFavorite ? 'fas' : 'far'} fa-heart"></i>
+              </button>
               <button class="text-slate-200 dark:text-slate-600 hover:text-emerald-500 p-1" onclick="fn_markSeen('${ch.id}')"><i class="fas fa-check-circle"></i></button>
-              <button class="text-indigo-400 hover:text-indigo-600 p-1" onclick="fn_analyzeWithAI('${ch.latestVideoId ? 'https://www.youtube.com/watch?v='+ch.latestVideoId : null}')"><i class="fas fa-book-open text-sm"></i></button>
-              <a href="${ch.url}" target="_blank" class="text-slate-200 dark:text-slate-600 hover:text-red-600 p-1" onclick="fn_touchChannel('${ch.id}')"><i class="fab fa-youtube text-lg"></i></a>
+              <button class="text-indigo-400 hover:text-indigo-600 p-1" onclick="fn_analyzeWithAI('${ch.latestVideoId ? 'https://www.youtube.com/watch?v='+ch.latestVideoId : ''}')"><i class="fas fa-book-open text-sm"></i></button>
+              <button class="text-slate-200 dark:text-slate-600 hover:text-red-500 p-1" onclick="fn_deleteChannel('${ch.id}', '${cat.id}')"><i class="fas fa-trash"></i></button>
             </div>
           `;
           list.appendChild(item);
@@ -272,14 +280,7 @@
         
         new Sortable(list, {
           group: "channels", animation: 150, ghostClass: "ghost", handle: ".drag-handle", disabled: settings.isLocked,
-          onAdd: function (evt) {
-            if (evt.to.id === 'top-channels') {
-              const itemEl = evt.item;
-              if (Array.from(evt.to.children).filter(child => child.dataset.chId === itemEl.dataset.chId).length > 1) evt.to.removeChild(itemEl);
-              const clone = itemEl.cloneNode(true); evt.from.insertBefore(clone, evt.from.children[evt.oldIndex]);
-            }
-            syncFromDOM(); persistData(); render();
-          },
+          onAdd: function (evt) { syncFromDOM(); persistData(); render(); },
           onEnd: () => { syncFromDOM(); persistData(); fn_checkBadges(); render(); }
         });
       });
@@ -289,15 +290,35 @@
       if (!isUpdating) setStatus(`Monitorando ${countChannels()} canali.`);
     }
 
-    // --- LOGICA AGGIORNAMENTO VELOCE (PARALLELO) ---
+    // --- LOGICA PREFERITI ---
+    window.fn_toggleFavorite = function(chId) {
+        const topCat = appData.find(c => c.id === "top-channels");
+        const alreadyFav = topCat.channels.findIndex(ch => ch.id === chId);
+        
+        if (alreadyFav > -1) {
+            topCat.channels.splice(alreadyFav, 1);
+        } else {
+            // Cerca i dati del canale in qualsiasi altra categoria per copiarli
+            let sourceChannel = null;
+            for (const cat of appData) {
+                const found = cat.channels.find(c => c.id === chId);
+                if (found) { sourceChannel = structuredClone(found); break; }
+            }
+            if (sourceChannel) topCat.channels.unshift(sourceChannel);
+        }
+        persistData(); render();
+    };
+
+    // --- AGGIORNAMENTO DATI ---
     window.fn_checkAllUpdates = async function() {
         const all = appData.flatMap(cat => cat.channels);
         const unique = Array.from(new Set(all.map(ch => ch.id))).map(id => all.find(ch => ch.id === id));
         let processed = 0, total = unique.length;
-        setStatus(`Avvio verifica: 0 / ${total}...`);
-        const concurrency = 10;
-        for (let i = 0; i < unique.length; i += concurrency) {
-            const chunk = unique.slice(i, i + concurrency);
+        const btn = document.getElementById("updateAllBtn"), icon = document.getElementById("updateIcon");
+        btn.disabled = true; icon.classList.add("fa-spin");
+        
+        for (let i = 0; i < unique.length; i += 10) {
+            const chunk = unique.slice(i, i + 10);
             await Promise.all(chunk.map(async (ch) => {
                 try {
                     const url = settings.useProxy ? settings.proxyUrlTemplate.replace("{ID}", ch.id) : `https://www.youtube.com/feeds/videos.xml?channel_id=${ch.id}`;
@@ -312,23 +333,56 @@
                             });
                         });
                     }
-                } catch (err) { console.warn("Errore canale:", ch.id, err); }
+                } catch (err) {}
                 processed++;
-                setStatus(`Verifica in corso: ${processed} / ${total}...`);
+                setStatus(`Verifica: ${processed} / ${total}...`);
             }));
             render(true); 
         }
-        persistData();
-        render(false);
+        btn.disabled = false; icon.classList.remove("fa-spin");
+        persistData(); render(false);
     };
 
-    // --- UTILS & DRIVE ---
+    // --- AZIONI ---
     window.fn_markSeen = function(id) { 
         appData.forEach(cat => cat.channels.forEach(ch => { if (ch.id === id) { ch.isNew = false; ch.lastSeenVideoId = ch.latestVideoId; } })); 
         persistData(); render(); 
     };
-    window.fn_touchChannel = function(id) { fn_markSeen(id); }; // Fix: Mappa touch a markSeen
 
+    window.fn_addSingleChannel = function() {
+      const name = prompt("Nome Canale:");
+      const rawUrl = prompt("URL o Username (@...):"); if (!name || !rawUrl) return;
+      let id = rawUrl.includes('channel/') ? rawUrl.split('channel/')[1].split('/')[0] : rawUrl.replace('@', '').split('/').pop();
+      let url = rawUrl.startsWith('http') ? rawUrl : `https://www.youtube.com/@${id}`;
+      appData.find(c => c.id === "inbox").channels.unshift({ id, name, url, isNew: true, latestVideoId: null, latestVideoTitle: null, latestVideoPublished: null, latestVideoDuration: null, lastSeenVideoId: null });
+      persistData(); render();
+    };
+
+    window.fn_deleteChannel = function(chId, catId) { 
+        if (confirm("Rimuovere il canale da questa categoria?")) { 
+            const cat = appData.find(c => c.id === catId); 
+            cat.channels = cat.channels.filter(ch => ch.id !== chId); 
+            persistData(); render(); 
+        } 
+    };
+
+    window.fn_analyzeWithAI = function(vUrl) { 
+        if (!vUrl) return; navigator.clipboard.writeText(vUrl); 
+        window.open(`https://notebooklm.google.com/notebook/${NOTEBOOK_ID}`, '_blank'); 
+    };
+
+    window.fn_addCategory = function() { const n = prompt("Nome:"); if (n) { appData.push({ id: "c_" + Date.now(), title: n.toUpperCase(), color: "bg-indigo-600", channels: [] }); persistData(); render(); } };
+    
+    function fn_deleteCategory(id) { 
+        if (confirm("Eliminare categoria? I canali torneranno in 'DA SMISTARE'.")) { 
+            const i = appData.findIndex(c => c.id === id); 
+            const inbox = appData.find(c => c.id === "inbox");
+            appData[i].channels.forEach(ch => { if(!inbox.channels.some(x => x.id === ch.id)) inbox.channels.push(ch); });
+            appData.splice(i, 1); persistData(); render(); 
+        } 
+    }
+
+    // --- DRIVE CLOUD ---
     function gapiLoaded() { gapi.load('client', async () => { await gapi.client.init({ apiKey: API_KEY, discoveryDocs: [DISCOVERY_DOC] }); gapiInited = true; checkAuthPersistence(); }); }
     function gisLoaded() { tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPES, callback: async () => { localStorage.setItem("drive_connected", "true"); updateDriveButton(true); await initializeDriveFile(); } }); gisInited = true; checkAuthPersistence(); }
     function checkAuthPersistence() { if (gapiInited && gisInited && localStorage.getItem("drive_connected") === "true") tokenClient.requestAccessToken({ prompt: '' }); }
@@ -339,22 +393,12 @@
     async function saveToDrive() { if (!driveFileId || !gapi.client.getToken()) return; await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`, { method: 'PATCH', headers: { 'Authorization': 'Bearer ' + gapi.client.getToken().access_token, 'Content-Type': 'application/json' }, body: JSON.stringify({ appData, settings }) }); }
     async function loadFromDrive() { const response = await gapi.client.drive.files.get({ fileId: driveFileId, alt: 'media' }); const cloudData = response.result || JSON.parse(response.body); if (cloudData.appData) { appData = cloudData.appData; settings = { ...settings, ...cloudData.settings }; persistSettings(); applyTheme(); updateCompactUI(); updateLockUI(); } localStorage.setItem(STORAGE_KEY, JSON.stringify(appData)); render(); }
     
-    window.fn_addSingleChannel = function() {
-      const name = prompt("Nome:"), rawUrl = prompt("URL:"); if (!name || !rawUrl) return;
-      let id = rawUrl.includes('channel/') ? rawUrl.split('channel/')[1] : rawUrl.replace('@', '').split('/').pop();
-      let url = rawUrl.startsWith('http') ? rawUrl : `https://www.youtube.com/@${rawUrl.replace('@', '')}`;
-      appData.find(c => c.id === "inbox").channels.unshift({ id, name, url, isNew: true, latestVideoId: null, latestVideoTitle: null, latestVideoPublished: null, latestVideoDuration: null, lastSeenVideoId: null });
-      persistData(); render();
-    };
-    window.fn_deleteChannel = function(chId, catId) { if (confirm("Eliminare?")) { const cat = appData.find(c => c.id === catId); cat.channels = cat.channels.filter(ch => ch.id !== chId); persistData(); render(); } };
-    window.fn_analyzeWithAI = function(vUrl) { if (!vUrl || vUrl === "null") return; navigator.clipboard.writeText(vUrl); window.open(`https://notebooklm.google.com/notebook/${NOTEBOOK_ID}`, '_blank'); };
+    // --- EXTRA ---
     function countChannels() { const ids = new Set(); appData.forEach(c => { if(c.id !== "top-channels") c.channels.forEach(ch => ids.add(ch.id)) }); return ids.size; }
-    window.fn_addCategory = function() { const n = prompt("Nome:"); if (n) { appData.push({ id: "c_" + Date.now(), title: n.toUpperCase(), color: "bg-indigo-600", channels: [] }); persistData(); render(); } };
-    function fn_deleteCategory(id) { if (confirm("Eliminare?")) { const i = appData.findIndex(c => c.id === id); appData.find(c => c.id === "inbox").channels.push(...appData[i].channels); appData.splice(i, 1); persistData(); render(); } }
     window.fn_saveSettings = function() { settings.useProxy = document.getElementById("useProxyToggle").checked; settings.proxyUrlTemplate = document.getElementById("proxyUrlInput").value.trim(); persistSettings(); render(); if(driveFileId) saveToDrive(); };
     window.fn_checkBadges = function() { appData.forEach(cat => { const b = document.getElementById("badge-" + cat.id); if (b) b.classList.toggle("hidden", !cat.channels.some(ch => ch.isNew)); }); };
-    window.fn_exportJson = function() { const blob = new Blob([JSON.stringify(appData, null, 2)], { type: "application/json" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `ythub_backup.json`; a.click(); };
-    window.fn_reset = function() { if (confirm("Reset totale?")) { localStorage.clear(); location.reload(); } };
+    window.fn_exportJson = function() { const blob = new Blob([JSON.stringify({appData, settings}, null, 2)], { type: "application/json" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `ythub_backup.json`; a.click(); };
+    window.fn_reset = function() { if (confirm("Resettare tutto?")) { localStorage.clear(); location.reload(); } };
     
     function syncFromDOM() {
       const newState = [];
