@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>YT HUB PRO - TV Smart</title>
+  <title>YT HUB PRO - v4.6 TV Edition</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
@@ -16,7 +16,7 @@
         theme: {
             extend: {
                 boxShadow: {
-                    'tv-glow': '0 0 0 4px #DC2626, 0 0 30px rgba(220, 38, 38, 0.8)', // Alone ancora più forte per TV
+                    'tv-glow': '0 0 0 4px #DC2626, 0 0 30px rgba(220, 38, 38, 0.8)',
                 }
             }
         }
@@ -42,7 +42,7 @@
 
     .column-width { display: inline-block; width: 100%; margin-bottom: 1.5rem; break-inside: avoid; }
     .sortable-list { min-height: 100px; height: auto; overflow: visible; }
-    .is-new-border { border-left: 5px solid #dc2626 !important; } /* Più evidente */
+    .is-new-border { border-left: 5px solid #dc2626 !important; }
     body { transition: background-color 0.3s ease; }
     
     .dark ::-webkit-scrollbar { width: 8px; }
@@ -53,7 +53,6 @@
     .tv-card:focus { outline: none; }
     
     .tv-card:focus {
-        /* Bordo rosso molto evidente e alone */
         box-shadow: 0 0 0 5px #ff0000, 0 0 25px rgba(255, 0, 0, 0.6); 
         transform: scale(1.03); 
         z-index: 50;
@@ -70,8 +69,9 @@
     <header class="max-w-[1600px] mx-auto mb-6 flex flex-col gap-4 bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
       <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div>
-          <h1 class="text-2xl font-black text-slate-800 dark:text-white tracking-tighter italic">
-            YT HUB <span class="text-red-600 font-normal">TV</span>
+          <h1 class="text-2xl font-black text-slate-800 dark:text-white tracking-tighter italic flex items-baseline gap-2">
+            <span>YT HUB <span class="text-red-600 font-normal">TV</span></span>
+            <span class="text-xs text-slate-400 font-mono font-normal">v4.6</span>
           </h1>
           <p id="statusLine" class="text-slate-400 text-xs mt-2 font-bold uppercase tracking-widest"></p>
         </div>
@@ -113,7 +113,7 @@
     const SYNC_FILE_NAME = "ythub_cloud_sync.json";
     const STORAGE_KEY = "yt_hub_vstable";
     const SETTINGS_KEY = "yt_hub_settings";
-    const FOCUS_KEY = "yt_hub_last_focus_id"; // Chiave per la memoria del focus
+    const FOCUS_KEY = "yt_hub_last_focus_id";
 
     const DEFAULT_DATA = [
       { id: "top-channels", title: "★ TOP CHANNELS", color: "bg-amber-500", channels: [] },
@@ -164,7 +164,7 @@
       }
     }
 
-    // --- RENDER (TV MODE + MEMORIA) ---
+    // --- RENDER (TV MODE + MEMORIA + DELETE) ---
     function render(isUpdating = false) {
       const board = document.getElementById("mainBoard");
       const scrollPos = isUpdating ? window.scrollY : null;
@@ -242,18 +242,21 @@
             </div>
           `;
           
-          // --- LOGICA MEMORIA FOCUS ---
-          // Quando la scheda riceve focus, salviamo il suo ID
           item.addEventListener('focus', () => {
               localStorage.setItem(FOCUS_KEY, ch.id);
           });
 
-          // Click & Keydown
           item.addEventListener('click', () => { window.open(videoWatchUrl, '_blank'); fn_markSeen(ch.id); });
+          
+          // GESTIONE ENTER e DELETE
           item.addEventListener('keydown', (e) => {
               if (e.key === 'Enter') {
                   e.preventDefault();
                   window.open(videoWatchUrl, '_blank');
+                  fn_markSeen(ch.id);
+              }
+              if (e.key === 'Delete') {
+                  e.preventDefault();
                   fn_markSeen(ch.id);
               }
           });
@@ -277,17 +280,13 @@
       if(isUpdating && scrollPos) window.scrollTo(0, scrollPos);
       if(!isUpdating) {
         setStatus(`Monitorando ${countChannels()} canali. TV Mode On.`);
-        // Tenta di ripristinare il focus
         restoreFocus();
       }
     }
 
-    // --- FUNZIONE RIPRISTINO FOCUS ---
     function restoreFocus() {
         const lastId = localStorage.getItem(FOCUS_KEY);
         if (lastId) {
-            // Cerchiamo la scheda con quel data-id
-            // setTimeout serve per dare tempo al DOM di stabilizzarsi
             setTimeout(() => {
                 const el = document.querySelector(`[data-ch-id="${lastId}"]`);
                 if (el) {
@@ -341,7 +340,7 @@
         }
     });
 
-    // --- AGGIORNAMENTO DATI CON "BUBBLE UP" (Sposta nuovi in alto) ---
+    // --- BUBBLE UP (AUTO SORT) ---
     window.fn_checkAllUpdates = async function() {
         const all = appData.flatMap(cat => cat.channels);
         const unique = Array.from(new Set(all.map(ch => ch.id))).map(id => all.find(ch => ch.id === id));
@@ -357,14 +356,11 @@
                     const resp = await fetch(url);
                     const data = await resp.json();
                     if(data && data.videoId) {
-                        // Iteriamo su tutte le categorie per trovare le istanze di questo canale
                         appData.forEach(cat => {
-                            // Troviamo l'indice del canale nella categoria
                             const idx = cat.channels.findIndex(c => c.id === ch.id);
                             if (idx > -1) {
                                 const inst = cat.channels[idx];
                                 if (inst.lastSeenVideoId !== data.videoId) {
-                                    // AGGIORNAMENTO DATI
                                     Object.assign(inst, { 
                                         isNew: true, 
                                         latestVideoId: data.videoId, 
@@ -372,11 +368,9 @@
                                         latestVideoPublished: data.published, 
                                         latestVideoDuration: data.duration || null 
                                     });
-                                    
-                                    // --- BUBBLE UP: Sposta in cima alla lista ---
-                                    if (idx > 0) { // Se non è già primo
-                                        cat.channels.splice(idx, 1); // Rimuovi da dove è
-                                        cat.channels.unshift(inst);  // Metti all'inizio
+                                    if (idx > 0) {
+                                        cat.channels.splice(idx, 1);
+                                        cat.channels.unshift(inst);
                                     }
                                 }
                             }
