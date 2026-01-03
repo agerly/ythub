@@ -1,9 +1,12 @@
+
+
+```html
 <!DOCTYPE html>
 <html lang="it">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>YT HUB PRO - Ultra Stable</title>
+  <title>YT HUB PRO - Card View</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
@@ -11,7 +14,16 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"/>
 
   <script>
-    tailwind.config = { darkMode: 'class' }
+    tailwind.config = { 
+        darkMode: 'class',
+        theme: {
+            extend: {
+                boxShadow: {
+                    'glow': '0 0 15px rgba(220, 38, 38, 0.3)', // Alone rosso
+                }
+            }
+        }
+    }
   </script>
 
   <style>
@@ -22,6 +34,7 @@
     .is-locked .category-header { cursor: default !important; }
     .is-locked .drag-handle { display: none !important; }
 
+    /* Layout a Colonne (Masonry) per le Categorie */
     #mainBoard { 
       display: block; 
       column-gap: 1.5rem;
@@ -46,7 +59,9 @@
       overflow: visible;
     }
     
+    /* Indicatore visivo "Nuovo" laterale */
     .is-new-border { border-left: 4px solid #dc2626 !important; }
+    
     body { transition: background-color 0.3s ease; }
 
     .dark ::-webkit-scrollbar { width: 8px; }
@@ -63,7 +78,7 @@
       <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div class="min-w-0">
           <h1 class="text-2xl font-black text-slate-800 dark:text-white tracking-tighter italic">
-            YT HUB <span class="text-red-600 font-normal">PRO</span>
+            YT HUB <span class="text-red-600 font-normal">CARDS</span>
           </h1>
           <p id="statusLine" class="text-slate-400 text-xs mt-2 font-bold uppercase tracking-widest"></p>
         </div>
@@ -97,7 +112,7 @@
           </button>
           
           <button id="updateAllBtn" onclick="fn_checkAllUpdates()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-emerald-700 transition flex items-center gap-2 text-xs shadow-sm">
-            <i id="updateIcon" class="fas fa-rotate"></i> VERIFICA VELOCE
+            <i id="updateIcon" class="fas fa-rotate"></i> VERIFICA
           </button>
 
           <button id="auth_button" onclick="handleAuthClick()" class="bg-amber-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-amber-700 transition flex items-center gap-2 text-xs shadow-sm">
@@ -192,7 +207,7 @@
       }
     }
 
-    // --- RENDER CORE ---
+    // --- RENDER CORE (MODIFICATO PER UI A SCHEDE) ---
     function render(isUpdating = false) {
       const board = document.getElementById("mainBoard");
       board.innerHTML = "";
@@ -229,46 +244,74 @@
 
         const list = document.createElement("div");
         list.id = cat.id;
-        list.className = "sortable-list bg-white dark:bg-slate-800 p-3 rounded-b-2xl shadow-sm space-y-2 border border-slate-200 dark:border-slate-700";
-        
+        // MODIFICA QUI: Grid per le cards invece di flex verticale
+        list.className = "sortable-list bg-white dark:bg-slate-800 p-3 rounded-b-2xl shadow-sm border border-slate-200 dark:border-slate-700 grid grid-cols-1 gap-3";
+        // Se vuoi 2 colonne dentro la categoria quando c'è spazio, decommenta la riga sotto e commenta quella sopra
+        // list.className = "sortable-list bg-white dark:bg-slate-800 p-3 rounded-b-2xl shadow-sm border border-slate-200 dark:border-slate-700 grid grid-cols-1 sm:grid-cols-2 gap-3";
+
         filteredChannels.forEach(ch => {
           const item = document.createElement("div");
           const isActuallyNew = ch.isNew === true;
           const isFavorite = topChannels.includes(ch.id);
-          const paddingClass = settings.isCompact ? 'p-1.5' : 'p-3';
-          const titleSize = settings.isCompact ? 'text-[12px]' : 'text-sm';
-          const videoTitleSize = settings.isCompact ? 'text-[9px]' : 'text-[10px]';
+          const paddingClass = settings.isCompact ? 'p-3' : 'p-4';
+          const titleSize = settings.isCompact ? 'text-xs' : 'text-sm';
+          const videoTitleSize = settings.isCompact ? 'text-[10px]' : 'text-xs';
 
-          item.className = `flex items-center ${paddingClass} bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl hover:shadow-md transition group ${isActuallyNew ? 'is-new-border' : ''}`;
+          // --- STILE SCHEDA / CARD ---
+          // border-2 border-transparent: bordo invisibile di base
+          // hover:border-red-600: bordo rosso al mouse
+          // focus-within:border-red-600: bordo rosso alla tastiera (quando il link interno ha il focus)
+          item.className = `
+            group relative flex flex-col justify-between 
+            bg-white dark:bg-slate-800 
+            border-2 border-transparent 
+            hover:border-red-600 hover:shadow-glow hover:-translate-y-1
+            focus-within:border-red-600 focus-within:shadow-glow focus-within:-translate-y-1
+            rounded-xl shadow-sm transition-all duration-200 ease-out
+            ${isActuallyNew ? 'is-new-border' : 'border-slate-100 dark:border-slate-700'}
+            ${paddingClass}
+          `;
+          
           item.dataset.chId = ch.id;
           
           const dateLabel = ch.latestVideoPublished ? new Date(ch.latestVideoPublished).toLocaleDateString("it-IT", {day:'2-digit', month:'2-digit'}) : "--/--";
           const titleColorClass = isActuallyNew ? "text-red-600 font-black" : "text-slate-500 dark:text-slate-400 font-medium";
-          const dragIcon = settings.isLocked ? '' : `<div class="drag-handle mr-2 text-slate-200 dark:text-slate-600 group-hover:text-slate-400 transition-colors"><i class="fas fa-grip-vertical"></i></div>`;
-          const durationMarkup = ch.latestVideoDuration ? `<span class="bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-1 py-0.5 rounded text-[8px] font-black uppercase mr-2">${ch.latestVideoDuration}</span>` : "";
+          const dragIcon = settings.isLocked ? '' : `<div class="drag-handle absolute top-2 right-2 text-slate-200 dark:text-slate-600 group-hover:text-slate-400 cursor-grab"><i class="fas fa-grip-vertical"></i></div>`;
+          const durationMarkup = ch.latestVideoDuration ? `<span class="bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded text-[9px] font-black uppercase">${ch.latestVideoDuration}</span>` : "";
 
           const videoWatchUrl = ch.latestVideoId ? `https://www.youtube.com/watch?v=${ch.latestVideoId}` : ch.url;
 
+          // STRUTTURA INTERNA DELLA CARD
           item.innerHTML = `
-            ${dragIcon}
-            <div class="flex-1 min-w-0">
-              <a href="${ch.url}" target="_blank" class="truncate ${titleSize} font-bold text-slate-800 dark:text-slate-100 leading-tight hover:text-red-600 transition-colors block">${ch.name}</a>
-              <a href="${videoWatchUrl}" target="_blank" onclick="fn_markSeen('${ch.id}')" 
-                 class="block truncate ${videoTitleSize} mt-0.5 uppercase tracking-tight ${titleColorClass} hover:underline">
-                 ${ch.latestVideoTitle || 'Nessun video recente'}
-              </a>
-              <div class="flex items-center mt-0.5">
-                ${durationMarkup} <span class="text-[9px] text-slate-400 font-bold uppercase tracking-widest tabular-nums">${dateLabel}</span>
-              </div>
+            <div class="mb-2 pr-4">
+               ${dragIcon}
+               <a href="${ch.url}" target="_blank" tabindex="-1" class="truncate ${titleSize} font-bold text-slate-800 dark:text-slate-100 hover:text-red-600 transition-colors block" title="${ch.name}">
+                 ${ch.name}
+               </a>
             </div>
-            <div class="flex items-center gap-1 ml-2">
-              <button class="p-1 transition-colors ${isFavorite ? 'text-rose-500' : 'text-slate-200 dark:text-slate-600 hover:text-rose-400'}" 
-                      onclick="fn_toggleFavorite('${ch.id}')" title="Preferito">
-                <i class="${isFavorite ? 'fas' : 'far'} fa-heart"></i>
-              </button>
-              <button class="text-slate-200 dark:text-slate-600 hover:text-emerald-500 p-1" onclick="fn_markSeen('${ch.id}')"><i class="fas fa-check-circle"></i></button>
-              <button class="text-indigo-400 hover:text-indigo-600 p-1" onclick="fn_analyzeWithAI('${ch.latestVideoId ? 'https://www.youtube.com/watch?v='+ch.latestVideoId : ''}')"><i class="fas fa-book-open text-sm"></i></button>
-              <button class="text-slate-200 dark:text-slate-600 hover:text-red-500 p-1" onclick="fn_deleteChannel('${ch.id}', '${cat.id}')"><i class="fas fa-trash"></i></button>
+
+            <div class="flex-1 mb-3">
+               <a href="${videoWatchUrl}" target="_blank" onclick="fn_markSeen('${ch.id}')" 
+                  class="block leading-snug ${videoTitleSize} uppercase tracking-tight ${titleColorClass} hover:underline line-clamp-2 outline-none">
+                  ${ch.latestVideoTitle || 'Nessun video recente'}
+               </a>
+            </div>
+
+            <div class="flex items-end justify-between mt-auto pt-2 border-t border-slate-100 dark:border-slate-700">
+               <div class="flex items-center gap-2">
+                 ${durationMarkup} 
+                 <span class="text-[9px] text-slate-400 font-bold uppercase tracking-widest tabular-nums">${dateLabel}</span>
+               </div>
+               
+               <div class="flex items-center gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
+                 <button class="p-1 transition-colors ${isFavorite ? 'text-rose-500' : 'text-slate-300 dark:text-slate-600 hover:text-rose-400'}" 
+                         onclick="fn_toggleFavorite('${ch.id}')" title="Preferito">
+                   <i class="${isFavorite ? 'fas' : 'far'} fa-heart text-xs"></i>
+                 </button>
+                 <button class="text-slate-300 dark:text-slate-600 hover:text-emerald-500 p-1" onclick="fn_markSeen('${ch.id}')" title="Segna visto"><i class="fas fa-check-circle text-xs"></i></button>
+                 <button class="text-indigo-300 hover:text-indigo-500 p-1" onclick="fn_analyzeWithAI('${ch.latestVideoId ? 'https://www.youtube.com/watch?v='+ch.latestVideoId : ''}')"><i class="fas fa-book-open text-xs"></i></button>
+                 <button class="text-slate-300 dark:text-slate-600 hover:text-red-500 p-1" onclick="fn_deleteChannel('${ch.id}', '${cat.id}')"><i class="fas fa-trash text-xs"></i></button>
+               </div>
             </div>
           `;
           list.appendChild(item);
@@ -298,7 +341,6 @@
         if (alreadyFav > -1) {
             topCat.channels.splice(alreadyFav, 1);
         } else {
-            // Cerca i dati del canale in qualsiasi altra categoria per copiarli
             let sourceChannel = null;
             for (const cat of appData) {
                 const found = cat.channels.find(c => c.id === chId);
@@ -425,3 +467,5 @@
   <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
 </body>
 </html>
+
+```
