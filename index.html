@@ -1,12 +1,9 @@
-
-
-```html
 <!DOCTYPE html>
 <html lang="it">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>YT HUB PRO - Card View</title>
+  <title>YT HUB PRO - TV Mode</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
@@ -19,7 +16,7 @@
         theme: {
             extend: {
                 boxShadow: {
-                    'glow': '0 0 15px rgba(220, 38, 38, 0.3)', // Alone rosso
+                    'tv-glow': '0 0 0 4px #DC2626, 0 0 20px rgba(220, 38, 38, 0.6)', // Bordo Rosso Intenso
                 }
             }
         }
@@ -27,119 +24,85 @@
   </script>
 
   <style>
+    /* Stili base */
     .ghost { opacity: 0.3; background: #cbd5e1; }
     .drag-handle { cursor: grab; }
     .category-header { cursor: move; }
-    
     .is-locked .category-header { cursor: default !important; }
     .is-locked .drag-handle { display: none !important; }
 
-    /* Layout a Colonne (Masonry) per le Categorie */
+    /* Layout Griglia Masonry */
     #mainBoard { 
       display: block; 
       column-gap: 1.5rem;
       width: 100%;
       padding-bottom: 50px;
     }
-
     @media (min-width: 768px) { #mainBoard { column-count: 2; } }
     @media (min-width: 1280px) { #mainBoard { column-count: 3; } }
     @media (min-width: 1600px) { #mainBoard { column-count: 4; } }
 
-    .column-width { 
-      display: inline-block; 
-      width: 100%; 
-      margin-bottom: 1.5rem; 
-      break-inside: avoid;
-    }
-
-    .sortable-list { 
-      min-height: 100px; 
-      height: auto; 
-      overflow: visible;
-    }
-    
-    /* Indicatore visivo "Nuovo" laterale */
+    .column-width { display: inline-block; width: 100%; margin-bottom: 1.5rem; break-inside: avoid; }
+    .sortable-list { min-height: 100px; height: auto; overflow: visible; }
     .is-new-border { border-left: 4px solid #dc2626 !important; }
-    
     body { transition: background-color 0.3s ease; }
-
+    
+    /* Scrollbar scura */
     .dark ::-webkit-scrollbar { width: 8px; }
     .dark ::-webkit-scrollbar-track { background: #1e293b; }
     .dark ::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
-    .dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+    /* --- STILE FOCUS TV --- */
+    /* Nasconde l'outline standard del browser */
+    .tv-card:focus { outline: none; }
+    
+    /* Quando la card ha il focus (selezionata con le frecce) */
+    .tv-card:focus {
+        box-shadow: 0 0 0 4px #DC2626, 0 0 25px rgba(220, 38, 38, 0.5); /* Bordo Rosso Spesso */
+        transform: scale(1.02); /* Leggero zoom */
+        z-index: 10;
+        background-color: #1e1e1e; /* Leggermente più chiaro in dark mode */
+    }
+    /* In modalità light, il focus rende lo sfondo bianco puro */
+    html:not(.dark) .tv-card:focus { background-color: white; }
+
   </style>
 </head>
 
 <body class="bg-slate-50 dark:bg-slate-900 min-h-screen">
   <div class="p-4 sm:p-8">
     <header class="max-w-[1600px] mx-auto mb-6 flex flex-col gap-4 bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
-      
       <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-        <div class="min-w-0">
+        <div>
           <h1 class="text-2xl font-black text-slate-800 dark:text-white tracking-tighter italic">
-            YT HUB <span class="text-red-600 font-normal">CARDS</span>
+            YT HUB <span class="text-red-600 font-normal">TV</span>
           </h1>
           <p id="statusLine" class="text-slate-400 text-xs mt-2 font-bold uppercase tracking-widest"></p>
         </div>
 
         <div class="relative w-full lg:max-w-md">
-            <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                <i class="fas fa-search text-slate-400 text-sm"></i>
-            </span>
-            <input type="text" id="searchInput" oninput="fn_handleSearch()" placeholder="Cerca canali o video..." 
-                class="w-full pl-10 pr-4 py-2 bg-slate-100 dark:bg-slate-700 dark:text-white border-none rounded-xl text-sm focus:ring-2 focus:ring-red-500 transition-all outline-none">
+            <input type="text" id="searchInput" oninput="fn_handleSearch()" placeholder="Cerca..." 
+                class="w-full px-4 py-2 bg-slate-100 dark:bg-slate-700 dark:text-white border-none rounded-xl text-sm outline-none focus:ring-2 focus:ring-red-500">
         </div>
 
-        <div class="flex flex-wrap gap-2 justify-start lg:justify-end items-center">
-          
-          <button onclick="fn_toggleDarkMode()" class="p-2 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-amber-400 hover:opacity-80 transition">
-            <i id="darkIcon" class="fas fa-moon"></i>
-          </button>
-
-          <button onclick="fn_toggleCompact()" id="compactBtn" class="p-2 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:opacity-80 transition flex items-center gap-2 text-xs font-bold">
-            <i class="fas fa-compress-alt"></i> <span id="compactText">COMPACT</span>
-          </button>
-
-          <div class="h-8 w-[1px] bg-slate-200 dark:bg-slate-700 mx-1 hidden sm:block"></div>
-
-          <button id="lockBtn" onclick="fn_toggleLock()" class="bg-sky-500 text-white px-4 py-2 rounded-xl font-bold hover:opacity-90 transition flex items-center gap-2 text-xs shadow-sm">
-            <i id="lockIcon" class="fas fa-lock-open"></i> <span id="lockText">SPOSTA: ON</span>
-          </button>
-
-          <button onclick="fn_addSingleChannel()" class="bg-red-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-red-700 transition flex items-center gap-2 text-xs shadow-sm">
-            <i class="fas fa-plus"></i> CANALE
-          </button>
-          
-          <button id="updateAllBtn" onclick="fn_checkAllUpdates()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-emerald-700 transition flex items-center gap-2 text-xs shadow-sm">
-            <i id="updateIcon" class="fas fa-rotate"></i> VERIFICA
-          </button>
-
-          <button id="auth_button" onclick="handleAuthClick()" class="bg-amber-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-amber-700 transition flex items-center gap-2 text-xs shadow-sm">
-            <i class="fab fa-google"></i> DRIVE
-          </button>
-
-          <button onclick="fn_exportJson()" class="bg-slate-200 dark:bg-slate-700 dark:text-slate-200 text-slate-800 px-4 py-2 rounded-xl font-bold hover:bg-slate-300 transition text-xs shadow-sm">
-            <i class="fas fa-download"></i>
-          </button>
-
-          <button onclick="fn_reset()" class="text-slate-300 hover:text-red-600 transition p-2"><i class="fas fa-sync"></i></button>
+        <div class="flex flex-wrap gap-2 items-center">
+          <button onclick="fn_toggleDarkMode()" class="p-2 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-amber-400"><i id="darkIcon" class="fas fa-moon"></i></button>
+          <button onclick="fn_toggleCompact()" id="compactBtn" class="p-2 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold"><i class="fas fa-compress-alt"></i></button>
+          <button id="lockBtn" onclick="fn_toggleLock()" class="bg-sky-500 text-white px-3 py-2 rounded-xl font-bold text-xs"><i id="lockIcon" class="fas fa-lock-open"></i></button>
+          <button onclick="fn_addSingleChannel()" class="bg-red-600 text-white px-3 py-2 rounded-xl font-bold text-xs"><i class="fas fa-plus"></i></button>
+          <button id="updateAllBtn" onclick="fn_checkAllUpdates()" class="bg-emerald-600 text-white px-3 py-2 rounded-xl font-bold text-xs"><i id="updateIcon" class="fas fa-rotate"></i></button>
+          <button id="auth_button" onclick="handleAuthClick()" class="bg-amber-600 text-white px-3 py-2 rounded-xl font-bold text-xs"><i class="fab fa-google"></i> DRIVE</button>
+          <button onclick="fn_saveSettings()" class="bg-slate-800 dark:bg-slate-600 text-white px-3 py-2 rounded-xl font-bold text-xs">SALVA</button>
         </div>
       </div>
     </header>
 
-    <div class="max-w-[1600px] mx-auto mb-8 bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
-      <div class="flex flex-col md:flex-row gap-4 md:items-center justify-between">
-        <div class="flex items-center gap-3"><i class="fas fa-sliders text-slate-400"></i><span class="text-sm font-semibold text-slate-700 dark:text-slate-300">Opzioni</span></div>
-        <div class="flex flex-1 max-w-2xl gap-3 justify-end items-center">
-          <button onclick="fn_addCategory()" class="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 transition text-xs shadow-sm">+ CATEGORIA</button>
-          <label class="flex items-center gap-2 text-sm font-bold text-slate-600 dark:text-slate-400">
-            <input id="useProxyToggle" type="checkbox" class="accent-emerald-600 w-4 h-4" /> Proxy
-          </label>
-          <input id="proxyUrlInput" type="text" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm outline-none" placeholder="https://tuo-worker.../?channel_id={ID}" />
-          <button onclick="fn_saveSettings()" class="bg-slate-800 dark:bg-slate-600 text-white px-6 py-2 rounded-xl font-bold text-sm shadow-sm">Salva</button>
+    <div class="max-w-[1600px] mx-auto mb-8 bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-wrap gap-4 justify-between items-center">
+        <button onclick="fn_addCategory()" class="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold text-xs shadow-sm">+ CATEGORIA</button>
+        <div class="flex gap-4 items-center">
+            <label class="flex items-center gap-2 text-sm font-bold text-slate-600 dark:text-slate-400"><input id="useProxyToggle" type="checkbox" class="accent-emerald-600 w-4 h-4" /> Proxy</label>
+            <input id="proxyUrlInput" type="text" class="px-3 py-1 rounded border dark:bg-slate-700 dark:text-white text-xs w-48" placeholder="Proxy URL..." />
         </div>
-      </div>
     </div>
 
     <div id="mainBoard" class="max-w-[1600px] mx-auto"></div>
@@ -167,7 +130,7 @@
     let tokenClient, gapiInited = false, gisInited = false, driveFileId = null;
 
     // --- CARICAMENTO / SALVATAGGIO ---
-    function loadSettings() { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || { useProxy: false, proxyUrlTemplate: "", isLocked: false, isDark: false, isCompact: false }; } catch { return { useProxy: false, proxyUrlTemplate: "", isLocked: false, isDark: false, isCompact: false }; } }
+    function loadSettings() { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || { useProxy: false, proxyUrlTemplate: "", isLocked: false, isDark: true, isCompact: false }; } catch { return { useProxy: false, proxyUrlTemplate: "", isLocked: false, isDark: true, isCompact: false }; } }
     function persistSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
     function loadData() {
       try { 
@@ -189,27 +152,27 @@
     }
     function fn_toggleDarkMode() { settings.isDark = !settings.isDark; persistSettings(); applyTheme(); }
     function updateCompactUI() {
-      const btn = document.getElementById("compactBtn"), text = document.getElementById("compactText");
-      if(settings.isCompact) { btn.classList.replace("bg-slate-100", "bg-indigo-500"); btn.classList.add("text-white"); text.innerText = "COMPACT: ON"; } 
-      else { btn.classList.replace("bg-indigo-500", "bg-slate-100"); btn.classList.remove("text-white"); text.innerText = "COMPACT: OFF"; }
+      const btn = document.getElementById("compactBtn");
+      if(settings.isCompact) { btn.classList.replace("bg-slate-100", "bg-indigo-500"); btn.classList.add("text-white"); } 
+      else { btn.classList.replace("bg-indigo-500", "bg-slate-100"); btn.classList.remove("text-white"); }
     }
     function fn_toggleCompact() { settings.isCompact = !settings.isCompact; persistSettings(); updateCompactUI(); render(); }
     function fn_handleSearch() { searchTerm = document.getElementById("searchInput").value.toLowerCase(); render(); }
     function fn_toggleLock() { settings.isLocked = !settings.isLocked; persistSettings(); updateLockUI(); render(); }
     function updateLockUI() {
-      const btn = document.getElementById("lockBtn"), icon = document.getElementById("lockIcon"), text = document.getElementById("lockText");
+      const btn = document.getElementById("lockBtn"), icon = document.getElementById("lockIcon");
       if (settings.isLocked) { 
-        btn.classList.replace("bg-sky-500", "bg-slate-500"); icon.className = "fas fa-lock"; text.innerText = "SPOSTA: OFF";
-        document.body.classList.add('is-locked');
+        btn.classList.replace("bg-sky-500", "bg-slate-500"); icon.className = "fas fa-lock"; document.body.classList.add('is-locked');
       } else { 
-        btn.classList.replace("bg-slate-500", "bg-sky-500"); icon.className = "fas fa-lock-open"; text.innerText = "SPOSTA: ON";
-        document.body.classList.remove('is-locked');
+        btn.classList.replace("bg-slate-500", "bg-sky-500"); icon.className = "fas fa-lock-open"; document.body.classList.remove('is-locked');
       }
     }
 
-    // --- RENDER CORE (MODIFICATO PER UI A SCHEDE) ---
+    // --- RENDER (TV MODE) ---
     function render(isUpdating = false) {
       const board = document.getElementById("mainBoard");
+      // Manteniamo lo scroll se stiamo solo aggiornando i dati
+      const scrollPos = isUpdating ? window.scrollY : null;
       board.innerHTML = "";
       
       const topChannels = appData.find(c => c.id === "top-channels").channels.map(c => c.id);
@@ -226,28 +189,18 @@
 
         const header = document.createElement("div");
         header.className = `${cat.color} text-white p-4 rounded-t-2xl font-bold flex justify-between items-center shadow-sm category-header`;
-        header.innerHTML = `
-          <div class="flex items-center gap-2">
-            <span class="tracking-tight uppercase text-xs">${cat.title}</span>
-            <span class="bg-black/20 text-white/90 px-2 py-0.5 rounded-full text-[10px] font-black">${filteredChannels.length}</span>
-            <span id="badge-${cat.id}" class="hidden bg-white text-slate-900 text-[9px] px-1.5 py-0.5 rounded font-black animate-pulse">NEW</span>
-          </div>
-        `;
-        
+        header.innerHTML = `<span class="tracking-tight uppercase text-xs">${cat.title} <span class="opacity-70">(${filteredChannels.length})</span></span>`;
         if (cat.id !== "inbox" && cat.id !== "top-channels") {
-          const delBtn = document.createElement("button");
-          delBtn.innerHTML = '<i class="fas fa-times text-xs"></i>';
-          delBtn.className = "opacity-40 hover:opacity-100 transition";
-          delBtn.onclick = (e) => { e.stopPropagation(); fn_deleteCategory(cat.id); };
-          header.appendChild(delBtn);
+             const delBtn = document.createElement("button");
+             delBtn.innerHTML = '<i class="fas fa-times"></i>';
+             delBtn.className = "opacity-50 hover:opacity-100";
+             delBtn.onclick = (e) => { e.stopPropagation(); fn_deleteCategory(cat.id); };
+             header.appendChild(delBtn);
         }
 
         const list = document.createElement("div");
         list.id = cat.id;
-        // MODIFICA QUI: Grid per le cards invece di flex verticale
         list.className = "sortable-list bg-white dark:bg-slate-800 p-3 rounded-b-2xl shadow-sm border border-slate-200 dark:border-slate-700 grid grid-cols-1 gap-3";
-        // Se vuoi 2 colonne dentro la categoria quando c'è spazio, decommenta la riga sotto e commenta quella sopra
-        // list.className = "sortable-list bg-white dark:bg-slate-800 p-3 rounded-b-2xl shadow-sm border border-slate-200 dark:border-slate-700 grid grid-cols-1 sm:grid-cols-2 gap-3";
 
         filteredChannels.forEach(ch => {
           const item = document.createElement("div");
@@ -255,65 +208,61 @@
           const isFavorite = topChannels.includes(ch.id);
           const paddingClass = settings.isCompact ? 'p-3' : 'p-4';
           const titleSize = settings.isCompact ? 'text-xs' : 'text-sm';
-          const videoTitleSize = settings.isCompact ? 'text-[10px]' : 'text-xs';
+          const videoWatchUrl = ch.latestVideoId ? `https://www.youtube.com/watch?v=${ch.latestVideoId}` : ch.url;
+          const dateLabel = ch.latestVideoPublished ? new Date(ch.latestVideoPublished).toLocaleDateString("it-IT", {day:'2-digit', month:'2-digit'}) : "--/--";
 
-          // --- STILE SCHEDA / CARD ---
-          // border-2 border-transparent: bordo invisibile di base
-          // hover:border-red-600: bordo rosso al mouse
-          // focus-within:border-red-600: bordo rosso alla tastiera (quando il link interno ha il focus)
+          // --- CONFIGURAZIONE TV CARD ---
+          // tabindex="0" rende il div focusable
+          // tv-card è la classe che useremo per la logica JS
+          item.setAttribute("tabindex", "0"); 
+          item.dataset.chId = ch.id;
+          item.dataset.videoUrl = videoWatchUrl; // Per aprirlo con Enter
           item.className = `
-            group relative flex flex-col justify-between 
+            tv-card
+            relative flex flex-col justify-between 
             bg-white dark:bg-slate-800 
-            border-2 border-transparent 
-            hover:border-red-600 hover:shadow-glow hover:-translate-y-1
-            focus-within:border-red-600 focus-within:shadow-glow focus-within:-translate-y-1
-            rounded-xl shadow-sm transition-all duration-200 ease-out
-            ${isActuallyNew ? 'is-new-border' : 'border-slate-100 dark:border-slate-700'}
+            border border-slate-100 dark:border-slate-700
+            rounded-xl shadow-sm transition-all duration-200
+            cursor-pointer
+            ${isActuallyNew ? 'is-new-border' : ''}
             ${paddingClass}
           `;
-          
-          item.dataset.chId = ch.id;
-          
-          const dateLabel = ch.latestVideoPublished ? new Date(ch.latestVideoPublished).toLocaleDateString("it-IT", {day:'2-digit', month:'2-digit'}) : "--/--";
-          const titleColorClass = isActuallyNew ? "text-red-600 font-black" : "text-slate-500 dark:text-slate-400 font-medium";
-          const dragIcon = settings.isLocked ? '' : `<div class="drag-handle absolute top-2 right-2 text-slate-200 dark:text-slate-600 group-hover:text-slate-400 cursor-grab"><i class="fas fa-grip-vertical"></i></div>`;
-          const durationMarkup = ch.latestVideoDuration ? `<span class="bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded text-[9px] font-black uppercase">${ch.latestVideoDuration}</span>` : "";
 
-          const videoWatchUrl = ch.latestVideoId ? `https://www.youtube.com/watch?v=${ch.latestVideoId}` : ch.url;
-
-          // STRUTTURA INTERNA DELLA CARD
+          // Layout interno card
           item.innerHTML = `
-            <div class="mb-2 pr-4">
-               ${dragIcon}
-               <a href="${ch.url}" target="_blank" tabindex="-1" class="truncate ${titleSize} font-bold text-slate-800 dark:text-slate-100 hover:text-red-600 transition-colors block" title="${ch.name}">
-                 ${ch.name}
-               </a>
+            <div class="mb-2 flex justify-between items-start">
+               <div class="truncate ${titleSize} font-bold text-slate-800 dark:text-slate-100" title="${ch.name}">${ch.name}</div>
+               ${!settings.isLocked ? '<i class="fas fa-grip-vertical text-slate-300 dark:text-slate-600 drag-handle"></i>' : ''}
             </div>
-
+            
             <div class="flex-1 mb-3">
-               <a href="${videoWatchUrl}" target="_blank" onclick="fn_markSeen('${ch.id}')" 
-                  class="block leading-snug ${videoTitleSize} uppercase tracking-tight ${titleColorClass} hover:underline line-clamp-2 outline-none">
+               <div class="block leading-snug text-xs uppercase tracking-tight ${isActuallyNew ? 'text-red-600 font-black' : 'text-slate-500 dark:text-slate-400 font-medium'} line-clamp-2">
                   ${ch.latestVideoTitle || 'Nessun video recente'}
-               </a>
+               </div>
             </div>
 
             <div class="flex items-end justify-between mt-auto pt-2 border-t border-slate-100 dark:border-slate-700">
-               <div class="flex items-center gap-2">
-                 ${durationMarkup} 
-                 <span class="text-[9px] text-slate-400 font-bold uppercase tracking-widest tabular-nums">${dateLabel}</span>
-               </div>
-               
-               <div class="flex items-center gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
-                 <button class="p-1 transition-colors ${isFavorite ? 'text-rose-500' : 'text-slate-300 dark:text-slate-600 hover:text-rose-400'}" 
-                         onclick="fn_toggleFavorite('${ch.id}')" title="Preferito">
-                   <i class="${isFavorite ? 'fas' : 'far'} fa-heart text-xs"></i>
-                 </button>
-                 <button class="text-slate-300 dark:text-slate-600 hover:text-emerald-500 p-1" onclick="fn_markSeen('${ch.id}')" title="Segna visto"><i class="fas fa-check-circle text-xs"></i></button>
-                 <button class="text-indigo-300 hover:text-indigo-500 p-1" onclick="fn_analyzeWithAI('${ch.latestVideoId ? 'https://www.youtube.com/watch?v='+ch.latestVideoId : ''}')"><i class="fas fa-book-open text-xs"></i></button>
-                 <button class="text-slate-300 dark:text-slate-600 hover:text-red-500 p-1" onclick="fn_deleteChannel('${ch.id}', '${cat.id}')"><i class="fas fa-trash text-xs"></i></button>
+               <div class="text-[9px] text-slate-400 font-bold uppercase">${dateLabel}</div>
+               <div class="flex gap-2">
+                 <i class="${isFavorite ? 'fas text-rose-500' : 'far text-slate-300 dark:text-slate-600'} fa-heart text-xs" onclick="event.stopPropagation(); fn_toggleFavorite('${ch.id}')"></i>
+                 <i class="fas fa-check-circle text-xs text-slate-300 dark:text-slate-600 hover:text-emerald-500" onclick="event.stopPropagation(); fn_markSeen('${ch.id}')"></i>
+                 <i class="fas fa-trash text-xs text-slate-300 dark:text-slate-600 hover:text-red-500" onclick="event.stopPropagation(); fn_deleteChannel('${ch.id}', '${cat.id}')"></i>
                </div>
             </div>
           `;
+          
+          // Click mouse = Enter
+          item.addEventListener('click', () => { window.open(videoWatchUrl, '_blank'); fn_markSeen(ch.id); });
+          
+          // Enter Key Listener (per aprire il video)
+          item.addEventListener('keydown', (e) => {
+              if (e.key === 'Enter') {
+                  e.preventDefault();
+                  window.open(videoWatchUrl, '_blank');
+                  fn_markSeen(ch.id);
+              }
+          });
+
           list.appendChild(item);
         });
 
@@ -324,41 +273,105 @@
         new Sortable(list, {
           group: "channels", animation: 150, ghostClass: "ghost", handle: ".drag-handle", disabled: settings.isLocked,
           onAdd: function (evt) { syncFromDOM(); persistData(); render(); },
-          onEnd: () => { syncFromDOM(); persistData(); fn_checkBadges(); render(); }
+          onEnd: () => { syncFromDOM(); persistData(); render(); }
         });
       });
       
       new Sortable(board, { animation: 150, ghostClass: "ghost", handle: ".category-header", disabled: settings.isLocked, onEnd: () => { syncFromDOM(); persistData(); render(); } });
-      fn_checkBadges();
-      if (!isUpdating) setStatus(`Monitorando ${countChannels()} canali.`);
+      if(isUpdating && scrollPos) window.scrollTo(0, scrollPos);
+      if(!isUpdating) setStatus(`Monitorando ${countChannels()} canali. Usa le FRECCE per navigare.`);
     }
 
-    // --- LOGICA PREFERITI ---
+    // --- LOGICA DI NAVIGAZIONE SPAZIALE (TV) ---
+    document.addEventListener('keydown', (e) => {
+        const navKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+        if (!navKeys.includes(e.key)) return;
+
+        e.preventDefault(); // Blocca lo scroll nativo della pagina
+
+        // Trova tutte le card visibili
+        const cards = Array.from(document.querySelectorAll('.tv-card'));
+        if (cards.length === 0) return;
+
+        const current = document.activeElement.closest('.tv-card');
+        
+        // Se nessuna card è selezionata, seleziona la prima in alto a sinistra
+        if (!current) {
+            cards[0].focus();
+            return;
+        }
+
+        const rect = current.getBoundingClientRect();
+        const curCenterX = rect.left + rect.width / 2;
+        const curCenterY = rect.top + rect.height / 2;
+
+        let bestCandidate = null;
+        let minDistance = Infinity;
+
+        cards.forEach(card => {
+            if (card === current) return;
+
+            const cRect = card.getBoundingClientRect();
+            const cCenterX = cRect.left + cRect.width / 2;
+            const cCenterY = cRect.top + cRect.height / 2;
+            
+            let isValid = false;
+            let dist = Infinity;
+
+            // Logica Direzionale Semplificata
+            const xDiff = cCenterX - curCenterX;
+            const yDiff = cCenterY - curCenterY;
+
+            if (e.key === 'ArrowRight') {
+                if (xDiff > 0 && Math.abs(yDiff) < rect.height) isValid = true; // È a destra e allineato verticalmente
+            } else if (e.key === 'ArrowLeft') {
+                if (xDiff < 0 && Math.abs(yDiff) < rect.height) isValid = true;
+            } else if (e.key === 'ArrowDown') {
+                if (yDiff > 0) isValid = true; // Sotto (qualsiasi colonna, ma preferiamo la più vicina)
+            } else if (e.key === 'ArrowUp') {
+                if (yDiff < 0) isValid = true;
+            }
+
+            if (isValid) {
+                // Calcolo Distanza Euclidea
+                dist = Math.sqrt(xDiff*xDiff + yDiff*yDiff);
+                
+                // Penalità per disallineamento (per evitare salti strani tra colonne)
+                if ((e.key === 'ArrowUp' || e.key === 'ArrowDown')) dist += Math.abs(xDiff) * 2; 
+                if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight')) dist += Math.abs(yDiff) * 2;
+
+                if (dist < minDistance) {
+                    minDistance = dist;
+                    bestCandidate = card;
+                }
+            }
+        });
+
+        if (bestCandidate) {
+            bestCandidate.focus();
+            bestCandidate.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    });
+
+    // --- FUNZIONI STANDARD (Uguali a prima) ---
     window.fn_toggleFavorite = function(chId) {
         const topCat = appData.find(c => c.id === "top-channels");
         const alreadyFav = topCat.channels.findIndex(ch => ch.id === chId);
-        
-        if (alreadyFav > -1) {
-            topCat.channels.splice(alreadyFav, 1);
-        } else {
+        if (alreadyFav > -1) { topCat.channels.splice(alreadyFav, 1); } 
+        else {
             let sourceChannel = null;
-            for (const cat of appData) {
-                const found = cat.channels.find(c => c.id === chId);
-                if (found) { sourceChannel = structuredClone(found); break; }
-            }
+            for (const cat of appData) { const found = cat.channels.find(c => c.id === chId); if (found) { sourceChannel = structuredClone(found); break; } }
             if (sourceChannel) topCat.channels.unshift(sourceChannel);
         }
         persistData(); render();
     };
 
-    // --- AGGIORNAMENTO DATI ---
     window.fn_checkAllUpdates = async function() {
         const all = appData.flatMap(cat => cat.channels);
         const unique = Array.from(new Set(all.map(ch => ch.id))).map(id => all.find(ch => ch.id === id));
         let processed = 0, total = unique.length;
         const btn = document.getElementById("updateAllBtn"), icon = document.getElementById("updateIcon");
         btn.disabled = true; icon.classList.add("fa-spin");
-        
         for (let i = 0; i < unique.length; i += 10) {
             const chunk = unique.slice(i, i + 10);
             await Promise.all(chunk.map(async (ch) => {
@@ -367,105 +380,40 @@
                     const resp = await fetch(url);
                     const data = await resp.json();
                     if(data && data.videoId) {
-                        appData.forEach(cat => {
-                            cat.channels.filter(c => c.id === ch.id).forEach(inst => {
-                                if (inst.lastSeenVideoId !== data.videoId) {
-                                    Object.assign(inst, { isNew: true, latestVideoId: data.videoId, latestVideoTitle: data.title, latestVideoPublished: data.published, latestVideoDuration: data.duration || null });
-                                }
-                            });
-                        });
+                        appData.forEach(cat => { cat.channels.filter(c => c.id === ch.id).forEach(inst => { if (inst.lastSeenVideoId !== data.videoId) { Object.assign(inst, { isNew: true, latestVideoId: data.videoId, latestVideoTitle: data.title, latestVideoPublished: data.published, latestVideoDuration: data.duration || null }); } }); });
                     }
                 } catch (err) {}
-                processed++;
-                setStatus(`Verifica: ${processed} / ${total}...`);
+                processed++; setStatus(`Verifica: ${processed} / ${total}...`);
             }));
             render(true); 
         }
-        btn.disabled = false; icon.classList.remove("fa-spin");
-        persistData(); render(false);
+        btn.disabled = false; icon.classList.remove("fa-spin"); persistData(); render(false);
     };
 
-    // --- AZIONI ---
-    window.fn_markSeen = function(id) { 
-        appData.forEach(cat => cat.channels.forEach(ch => { if (ch.id === id) { ch.isNew = false; ch.lastSeenVideoId = ch.latestVideoId; } })); 
-        persistData(); render(); 
-    };
-
-    window.fn_addSingleChannel = function() {
-      const name = prompt("Nome Canale:");
-      const rawUrl = prompt("URL o Username (@...):"); if (!name || !rawUrl) return;
-      let id = rawUrl.includes('channel/') ? rawUrl.split('channel/')[1].split('/')[0] : rawUrl.replace('@', '').split('/').pop();
-      let url = rawUrl.startsWith('http') ? rawUrl : `https://www.youtube.com/@${id}`;
-      appData.find(c => c.id === "inbox").channels.unshift({ id, name, url, isNew: true, latestVideoId: null, latestVideoTitle: null, latestVideoPublished: null, latestVideoDuration: null, lastSeenVideoId: null });
-      persistData(); render();
-    };
-
-    window.fn_deleteChannel = function(chId, catId) { 
-        if (confirm("Rimuovere il canale da questa categoria?")) { 
-            const cat = appData.find(c => c.id === catId); 
-            cat.channels = cat.channels.filter(ch => ch.id !== chId); 
-            persistData(); render(); 
-        } 
-    };
-
-    window.fn_analyzeWithAI = function(vUrl) { 
-        if (!vUrl) return; navigator.clipboard.writeText(vUrl); 
-        window.open(`https://notebooklm.google.com/notebook/${NOTEBOOK_ID}`, '_blank'); 
-    };
-
+    window.fn_markSeen = function(id) { appData.forEach(cat => cat.channels.forEach(ch => { if (ch.id === id) { ch.isNew = false; ch.lastSeenVideoId = ch.latestVideoId; } })); persistData(); render(); };
+    window.fn_addSingleChannel = function() { const name = prompt("Nome Canale:"); const rawUrl = prompt("URL o Username:"); if (!name || !rawUrl) return; let id = rawUrl.includes('channel/') ? rawUrl.split('channel/')[1].split('/')[0] : rawUrl.replace('@', '').split('/').pop(); let url = rawUrl.startsWith('http') ? rawUrl : `https://www.youtube.com/@${id}`; appData.find(c => c.id === "inbox").channels.unshift({ id, name, url, isNew: true, latestVideoId: null, latestVideoTitle: null, latestVideoPublished: null, latestVideoDuration: null, lastSeenVideoId: null }); persistData(); render(); };
+    window.fn_deleteChannel = function(chId, catId) { if (confirm("Rimuovere il canale?")) { const cat = appData.find(c => c.id === catId); cat.channels = cat.channels.filter(ch => ch.id !== chId); persistData(); render(); } };
     window.fn_addCategory = function() { const n = prompt("Nome:"); if (n) { appData.push({ id: "c_" + Date.now(), title: n.toUpperCase(), color: "bg-indigo-600", channels: [] }); persistData(); render(); } };
+    function fn_deleteCategory(id) { if (confirm("Eliminare categoria?")) { const i = appData.findIndex(c => c.id === id); const inbox = appData.find(c => c.id === "inbox"); appData[i].channels.forEach(ch => { if(!inbox.channels.some(x => x.id === ch.id)) inbox.channels.push(ch); }); appData.splice(i, 1); persistData(); render(); } }
     
-    function fn_deleteCategory(id) { 
-        if (confirm("Eliminare categoria? I canali torneranno in 'DA SMISTARE'.")) { 
-            const i = appData.findIndex(c => c.id === id); 
-            const inbox = appData.find(c => c.id === "inbox");
-            appData[i].channels.forEach(ch => { if(!inbox.channels.some(x => x.id === ch.id)) inbox.channels.push(ch); });
-            appData.splice(i, 1); persistData(); render(); 
-        } 
-    }
-
-    // --- DRIVE CLOUD ---
+    // --- CLOUD & UTILS ---
     function gapiLoaded() { gapi.load('client', async () => { await gapi.client.init({ apiKey: API_KEY, discoveryDocs: [DISCOVERY_DOC] }); gapiInited = true; checkAuthPersistence(); }); }
-    function gisLoaded() { tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPES, callback: async () => { localStorage.setItem("drive_connected", "true"); updateDriveButton(true); await initializeDriveFile(); } }); gisInited = true; checkAuthPersistence(); }
+    function gisLoaded() { tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPES, callback: async () => { localStorage.setItem("drive_connected", "true"); await initializeDriveFile(); } }); gisInited = true; checkAuthPersistence(); }
     function checkAuthPersistence() { if (gapiInited && gisInited && localStorage.getItem("drive_connected") === "true") tokenClient.requestAccessToken({ prompt: '' }); }
     async function handleAuthClick() { tokenClient.requestAccessToken({ prompt: 'consent' }); }
-    function updateDriveButton(active) { const btn = document.getElementById('auth_button'); if (active) { btn.innerHTML = '<i class="fas fa-cloud"></i> DRIVE'; btn.classList.replace('bg-amber-600', 'bg-emerald-600'); } }
-    async function initializeDriveFile() { try { const response = await gapi.client.drive.files.list({ q: `name = '${SYNC_FILE_NAME}' and trashed = false` }); const files = response.result.files; if (files.length > 0) { driveFileId = files[0].id; await loadFromDrive(); } else { await createDriveFile(); } } catch { } }
+    async function initializeDriveFile() { try { const response = await gapi.client.drive.files.list({ q: `name = '${SYNC_FILE_NAME}' and trashed = false` }); if (response.result.files.length > 0) { driveFileId = response.result.files[0].id; await loadFromDrive(); } else { await createDriveFile(); } } catch { } }
     async function createDriveFile() { const response = await gapi.client.drive.files.create({ resource: { name: SYNC_FILE_NAME, mimeType: 'application/json' } }); driveFileId = response.result.id; saveToDrive(); }
     async function saveToDrive() { if (!driveFileId || !gapi.client.getToken()) return; await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`, { method: 'PATCH', headers: { 'Authorization': 'Bearer ' + gapi.client.getToken().access_token, 'Content-Type': 'application/json' }, body: JSON.stringify({ appData, settings }) }); }
     async function loadFromDrive() { const response = await gapi.client.drive.files.get({ fileId: driveFileId, alt: 'media' }); const cloudData = response.result || JSON.parse(response.body); if (cloudData.appData) { appData = cloudData.appData; settings = { ...settings, ...cloudData.settings }; persistSettings(); applyTheme(); updateCompactUI(); updateLockUI(); } localStorage.setItem(STORAGE_KEY, JSON.stringify(appData)); render(); }
-    
-    // --- EXTRA ---
     function countChannels() { const ids = new Set(); appData.forEach(c => { if(c.id !== "top-channels") c.channels.forEach(ch => ids.add(ch.id)) }); return ids.size; }
     window.fn_saveSettings = function() { settings.useProxy = document.getElementById("useProxyToggle").checked; settings.proxyUrlTemplate = document.getElementById("proxyUrlInput").value.trim(); persistSettings(); render(); if(driveFileId) saveToDrive(); };
-    window.fn_checkBadges = function() { appData.forEach(cat => { const b = document.getElementById("badge-" + cat.id); if (b) b.classList.toggle("hidden", !cat.channels.some(ch => ch.isNew)); }); };
-    window.fn_exportJson = function() { const blob = new Blob([JSON.stringify({appData, settings}, null, 2)], { type: "application/json" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `ythub_backup.json`; a.click(); };
-    window.fn_reset = function() { if (confirm("Resettare tutto?")) { localStorage.clear(); location.reload(); } };
-    
-    function syncFromDOM() {
-      const newState = [];
-      document.querySelectorAll(".sortable-list").forEach(listEl => {
-        const catId = listEl.id, original = appData.find(c => c.id === catId), channels = [];
-        listEl.querySelectorAll("[data-ch-id]").forEach(el => {
-          const chId = el.dataset.chId; let found = null;
-          for(const c of appData) { const m = c.channels.find(x => x.id === chId); if(m) { found = m; break; } }
-          if(found) channels.push(structuredClone(found));
-        });
-        if(original) newState.push({ ...original, channels });
-      });
-      appData = newState;
-    }
+    window.fn_reset = function() { if (confirm("Reset?")) { localStorage.clear(); location.reload(); } };
+    function syncFromDOM() { const newState = []; document.querySelectorAll(".sortable-list").forEach(listEl => { const catId = listEl.id, original = appData.find(c => c.id === catId), channels = []; listEl.querySelectorAll("[data-ch-id]").forEach(el => { const chId = el.dataset.chId; let found = null; for(const c of appData) { const m = c.channels.find(x => x.id === chId); if(m) { found = m; break; } } if(found) channels.push(structuredClone(found)); }); if(original) newState.push({ ...original, channels }); }); appData = newState; }
 
-    window.onload = () => { 
-        document.getElementById("useProxyToggle").checked = settings.useProxy; 
-        document.getElementById("proxyUrlInput").value = settings.proxyUrlTemplate; 
-        applyTheme(); updateCompactUI(); updateLockUI(); render(); 
-    };
+    window.onload = () => { document.getElementById("useProxyToggle").checked = settings.useProxy; document.getElementById("proxyUrlInput").value = settings.proxyUrlTemplate; applyTheme(); updateCompactUI(); updateLockUI(); render(); };
   </script>
 
   <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
   <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
 </body>
 </html>
-
-```
