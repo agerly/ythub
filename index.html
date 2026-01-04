@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>YT HUB PRO - v5.5 Full Features</title>
+  <title>YT HUB PRO - v5.6 Fixed NotebookLM</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
@@ -83,7 +83,7 @@
         <div>
           <h1 class="text-2xl font-black text-slate-800 dark:text-white tracking-tighter italic flex items-baseline gap-2">
             <span>YT HUB <span class="text-red-600 font-normal">TV</span></span>
-            <span class="text-xs text-slate-400 font-mono font-normal">v5.5</span>
+            <span class="text-xs text-slate-400 font-mono font-normal">v5.6</span>
           </h1>
           <p id="statusLine" class="text-slate-400 text-xs mt-2 font-bold uppercase tracking-widest"></p>
         </div>
@@ -209,15 +209,18 @@
         }
     };
 
-    // NUOVA FUNZIONE PER NOTEBOOK LM (Placeholder)
+    // --- NOTEBOOKLM LOGIC ---
     window.fn_notebookLM = function(url) {
-        // Apre il link in una nuova tab. 
-        // Se vuoi aprire direttamente https://notebooklm.google.com/ puoi cambiare qui.
-        window.open(url, '_blank');
-        // Opzionale: copia negli appunti
+        // 1. Copia URL
         navigator.clipboard.writeText(url).then(() => {
-            setStatus("Link copiato per NotebookLM!");
-            setTimeout(() => setStatus(""), 2000);
+            setStatus("Link copiato! Aprendo NotebookLM...");
+            // 2. Apre NotebookLM in nuova scheda
+            window.open("https://notebooklm.google.com/", "_blank");
+            setTimeout(() => setStatus(""), 3000);
+        }).catch(err => {
+            console.error(err);
+            // Fallback
+            window.open("https://notebooklm.google.com/", "_blank");
         });
     }
 
@@ -341,7 +344,7 @@
                       ${dateLabel} ${durationLabel}
                    </div>
                    <div class="flex gap-2 items-center">
-                     <i class="fas fa-book text-xs text-slate-300 dark:text-slate-600 hover:text-purple-500" title="NotebookLM" onclick="event.stopPropagation(); fn_notebookLM('${videoWatchUrl}')"></i>
+                     <i class="fas fa-book text-xs text-slate-300 dark:text-slate-600 hover:text-purple-500" title="Copia link e apri NotebookLM" onclick="event.stopPropagation(); fn_notebookLM('${videoWatchUrl}')"></i>
                      <i class="${isFavorite ? 'fas text-rose-500' : 'far text-slate-300 dark:text-slate-600'} fa-heart text-xs" onclick="event.stopPropagation(); fn_toggleFavorite('${ch.id}')"></i>
                      <i class="fas fa-check-circle text-xs text-slate-300 dark:text-slate-600 hover:text-emerald-500" onclick="event.stopPropagation(); fn_markSeen('${ch.id}')"></i>
                      <i class="fas fa-trash text-xs text-slate-300 dark:text-slate-600 hover:text-red-500" onclick="event.stopPropagation(); fn_deleteChannel('${ch.id}', '${cat.id}')"></i>
