@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>YT HUB PRO - v5.2 Better Icons</title>
+  <title>YT HUB PRO - v5.4 Chessboard Nav</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
@@ -42,6 +42,7 @@
     @media (min-width: 1280px) { #mainBoard { column-count: 3; } }
     @media (min-width: 1600px) { #mainBoard { column-count: 4; } }
 
+    /* Importante: break-inside avoid impedisce che una categoria venga spezzata tra due colonne */
     .column-width { display: inline-block; width: 100%; margin-bottom: 1.5rem; break-inside: avoid; }
     .sortable-list { min-height: 10px; height: auto; overflow: visible; transition: all 0.3s ease; }
     
@@ -83,7 +84,7 @@
         <div>
           <h1 class="text-2xl font-black text-slate-800 dark:text-white tracking-tighter italic flex items-baseline gap-2">
             <span>YT HUB <span class="text-red-600 font-normal">TV</span></span>
-            <span class="text-xs text-slate-400 font-mono font-normal">v5.2</span>
+            <span class="text-xs text-slate-400 font-mono font-normal">v5.4 Chessboard</span>
           </h1>
           <p id="statusLine" class="text-slate-400 text-xs mt-2 font-bold uppercase tracking-widest"></p>
         </div>
@@ -184,6 +185,7 @@
             cat.isCollapsed = !cat.isCollapsed;
             persistData();
             render();
+            // Refocus header
             setTimeout(() => {
                 const header = document.querySelector(`[data-header-id="${catId}"]`);
                 if(header) header.focus();
@@ -228,25 +230,26 @@
 
         const col = document.createElement("div");
         col.className = "column-width";
+        col.dataset.colCatId = cat.id; // Per navigazione
 
         // --- HEADER (BUSTA) ---
         const header = document.createElement("div");
         header.className = `tv-card header-card ${cat.color} text-white p-4 rounded-t-2xl font-bold flex justify-between items-center shadow-sm category-header select-none transition-transform`;
         header.setAttribute("tabindex", "0");
         header.dataset.headerId = cat.id;
-        header.title = "Clicca per Aprire/Chiudere";
+        header.title = "Clicca o premi Enter per Aprire/Chiudere";
         
         const iconClass = isCollapsed ? 'fa-envelope' : 'fa-envelope-open';
         
         let actionsHtml = "";
         
-        // --- TASTO SEGNA TUTTI LETTI (Solo se ci sono novità) ---
         if (newCount > 0) {
             actionsHtml += `
                 <button class="opacity-70 hover:opacity-100 hover:text-emerald-300 mr-3 focus:text-emerald-300 transition-colors" 
                         title="Segna tutti come letti" 
                         onclick="event.stopPropagation(); fn_markCategorySeen('${cat.id}')">
-                    <i class="fas fa-circle-check text-lg"></i> </button>
+                    <i class="fas fa-circle-check text-lg"></i>
+                </button>
             `;
         }
 
@@ -297,6 +300,7 @@
               item.setAttribute("tabindex", "0"); 
               item.dataset.chId = ch.id;
               item.dataset.videoUrl = videoWatchUrl;
+              item.dataset.parentCatId = cat.id;
               item.className = `
                 tv-card video-card
                 relative flex flex-col justify-between 
@@ -384,53 +388,109 @@
         }
     }
 
-    // --- LOGICA NAVIGAZIONE TV ---
+    // --- LOGICA SCACCHIERA (CHESSBOARD NAV) ---
     document.addEventListener('keydown', (e) => {
         const navKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
         if (!navKeys.includes(e.key)) return;
         e.preventDefault(); 
         
-        const allCards = Array.from(document.querySelectorAll('.tv-card'));
-        const visibleCards = allCards.filter(el => el.offsetParent !== null);
-        
-        if (visibleCards.length === 0) return;
-        
         const current = document.activeElement.closest('.tv-card');
-        if (!current || !visibleCards.includes(current)) { 
-            visibleCards[0].focus(); return; 
+        if (!current) return;
+
+        // Identifichiamo il "quadrato" della scacchiera attuale (La Categoria)
+        let currentCategoryDiv = current.closest('.column-width');
+        if (!currentCategoryDiv) return;
+
+        const allCategories = Array.from(document.querySelectorAll('.column-width'));
+        
+        // --- FRECCIA DESTRA / SINISTRA (Saltare tra le colonne visive) ---
+        if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+            const curRect = currentCategoryDiv.getBoundingClientRect();
+            let bestTargetHeader = null;
+            let minDistance = Infinity;
+
+            // Filtriamo solo gli Header delle altre categorie
+            const allHeaders = Array.from(document.querySelectorAll('.header-card'));
+            
+            allHeaders.forEach(header => {
+                const hRect = header.getBoundingClientRect();
+                
+                // Ignoriamo l'header della categoria attuale
+                if (header.closest('.column-width') === currentCategoryDiv) return;
+
+                let isValid = false;
+                // Logica VISIVA: cerchiamo qualcosa fisicamente a destra o sinistra
+                // Usiamo una tolleranza Y molto ampia per considerare tutta la colonna a fianco
+                if (e.key === 'ArrowRight') {
+                    if (hRect.left > curRect.right - 50) isValid = true; 
+                } else {
+                    if (hRect.right < curRect.left + 50) isValid = true;
+                }
+
+                if (isValid) {
+                    // Cerca quello con la Y più simile per "restare sulla riga" (utile se ci sono più righe)
+                    // oppure semplicemente il più vicino in assoluto
+                    const distX = Math.abs(hRect.left - curRect.left);
+                    const distY = Math.abs(hRect.top - curRect.top);
+                    const dist = distX + (distY * 0.5); // Peso minore su Y per favorire la colonna
+                    
+                    if (dist < minDistance) {
+                        minDistance = dist;
+                        bestTargetHeader = header;
+                    }
+                }
+            });
+
+            if (bestTargetHeader) {
+                bestTargetHeader.focus();
+                bestTargetHeader.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            return;
         }
 
-        const rect = current.getBoundingClientRect();
-        const curCenterX = rect.left + rect.width / 2;
-        const curCenterY = rect.top + rect.height / 2;
-        let bestCandidate = null, minDistance = Infinity;
+        // --- FRECCIA SU / GIU (Navigazione interna alla colonna) ---
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            // Cerchiamo il prossimo elemento focusable che è VISIVAMENTE sotto/sopra e ALLINEATO orizzontalmente
+            // Questo gestisce sia i video dentro la lista, sia il salto alla categoria sotto (se presente nella stessa colonna CSS)
+            
+            const allCards = Array.from(document.querySelectorAll('.tv-card'));
+            // Filtriamo solo card visibili
+            const visibleCards = allCards.filter(el => el.offsetParent !== null);
+            
+            const curRect = current.getBoundingClientRect();
+            const curCenterX = curRect.left + curRect.width / 2;
+            
+            let bestCandidate = null;
+            let minV_Dist = Infinity;
 
-        visibleCards.forEach(card => {
-            if (card === current) return;
-            const cRect = card.getBoundingClientRect();
-            const cCenterX = cRect.left + cRect.width / 2;
-            const cCenterY = cRect.top + cRect.height / 2;
-            let isValid = false, dist = Infinity;
-            const xDiff = cCenterX - curCenterX;
-            const yDiff = cCenterY - curCenterY;
+            visibleCards.forEach(card => {
+                if (card === current) return;
+                const cRect = card.getBoundingClientRect();
+                const cCenterX = cRect.left + cRect.width / 2;
 
-            if (e.key === 'ArrowRight' && xDiff > 0 && Math.abs(yDiff) < rect.height * 2) isValid = true; 
-            else if (e.key === 'ArrowLeft' && xDiff < 0 && Math.abs(yDiff) < rect.height * 2) isValid = true;
-            else if (e.key === 'ArrowDown' && yDiff > 0) isValid = true;
-            else if (e.key === 'ArrowUp' && yDiff < 0) isValid = true;
+                // Deve essere allineato orizzontalmente (stessa colonna visiva)
+                if (Math.abs(cCenterX - curCenterX) > curRect.width * 0.5) return; // Fuori asse X
 
-            if (isValid) {
-                dist = Math.sqrt(xDiff*xDiff + yDiff*yDiff);
-                if ((e.key === 'ArrowUp' || e.key === 'ArrowDown')) dist += Math.abs(xDiff) * 3; 
-                if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight')) dist += Math.abs(yDiff) * 3;
+                const yDiff = cRect.top - curRect.top;
                 
-                if (dist < minDistance) { minDistance = dist; bestCandidate = card; }
-            }
-        });
+                let isValid = false;
+                if (e.key === 'ArrowDown' && yDiff > 0) isValid = true;
+                if (e.key === 'ArrowUp' && yDiff < 0) isValid = true;
 
-        if (bestCandidate) {
-            bestCandidate.focus();
-            bestCandidate.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                if (isValid) {
+                    const dist = Math.abs(yDiff);
+                    if (dist < minV_Dist) {
+                        minV_Dist = dist;
+                        bestCandidate = card;
+                    }
+                }
+            });
+
+            if (bestCandidate) {
+                bestCandidate.focus();
+                bestCandidate.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+            // Se non c'è bestCandidate (es. fine lista), NON facciamo nulla (blocco).
         }
     });
 
