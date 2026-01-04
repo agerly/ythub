@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>YT HUB PRO - v4.6 TV Edition</title>
+  <title>YT HUB PRO - v5.2 Better Icons</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
 
   <script>
     tailwind.config = { 
@@ -26,8 +26,10 @@
   <style>
     .ghost { opacity: 0.3; background: #cbd5e1; }
     .drag-handle { cursor: grab; }
-    .category-header { cursor: move; }
-    .is-locked .category-header { cursor: default !important; }
+    
+    .category-header { cursor: pointer; } 
+    
+    .is-locked .category-header { cursor: pointer !important; }
     .is-locked .drag-handle { display: none !important; }
 
     #mainBoard { 
@@ -41,7 +43,10 @@
     @media (min-width: 1600px) { #mainBoard { column-count: 4; } }
 
     .column-width { display: inline-block; width: 100%; margin-bottom: 1.5rem; break-inside: avoid; }
-    .sortable-list { min-height: 100px; height: auto; overflow: visible; }
+    .sortable-list { min-height: 10px; height: auto; overflow: visible; transition: all 0.3s ease; }
+    
+    .list-hidden { display: none !important; }
+
     .is-new-border { border-left: 5px solid #dc2626 !important; }
     body { transition: background-color 0.3s ease; }
     
@@ -52,14 +57,21 @@
     /* --- STILE FOCUS TV --- */
     .tv-card:focus { outline: none; }
     
-    .tv-card:focus {
+    .video-card:focus {
         box-shadow: 0 0 0 5px #ff0000, 0 0 25px rgba(255, 0, 0, 0.6); 
         transform: scale(1.03); 
         z-index: 50;
         background-color: #252525;
         border-color: #ff0000;
     }
-    html:not(.dark) .tv-card:focus { background-color: #fff; }
+    html:not(.dark) .video-card:focus { background-color: #fff; }
+
+    .header-card:focus {
+        box-shadow: 0 0 0 4px #fbbf24, 0 0 20px rgba(251, 191, 36, 0.6);
+        z-index: 51;
+        position: relative;
+        transform: scale(1.02);
+    }
 
   </style>
 </head>
@@ -71,7 +83,7 @@
         <div>
           <h1 class="text-2xl font-black text-slate-800 dark:text-white tracking-tighter italic flex items-baseline gap-2">
             <span>YT HUB <span class="text-red-600 font-normal">TV</span></span>
-            <span class="text-xs text-slate-400 font-mono font-normal">v4.6</span>
+            <span class="text-xs text-slate-400 font-mono font-normal">v5.2</span>
           </h1>
           <p id="statusLine" class="text-slate-400 text-xs mt-2 font-bold uppercase tracking-widest"></p>
         </div>
@@ -116,8 +128,8 @@
     const FOCUS_KEY = "yt_hub_last_focus_id";
 
     const DEFAULT_DATA = [
-      { id: "top-channels", title: "★ TOP CHANNELS", color: "bg-amber-500", channels: [] },
-      { id: "inbox", title: "DA SMISTARE", color: "bg-slate-700", channels: [] }
+      { id: "top-channels", title: "★ TOP CHANNELS", color: "bg-amber-500", channels: [], isCollapsed: false },
+      { id: "inbox", title: "DA SMISTARE", color: "bg-slate-700", channels: [], isCollapsed: false }
     ];
 
     let appData = loadData();
@@ -133,6 +145,7 @@
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return structuredClone(DEFAULT_DATA);
         const parsed = JSON.parse(raw);
+        parsed.forEach(cat => { if (cat.isCollapsed === undefined) cat.isCollapsed = false; });
         if (!parsed.some(c => c.id === "top-channels")) parsed.unshift(structuredClone(DEFAULT_DATA[0]));
         return parsed;
       } catch { return structuredClone(DEFAULT_DATA); }
@@ -164,7 +177,38 @@
       }
     }
 
-    // --- RENDER (TV MODE + MEMORIA + DELETE) ---
+    // --- LOGICA BUSTE (COLLAPSE & MARK ALL) ---
+    function fn_toggleCollapse(catId) {
+        const cat = appData.find(c => c.id === catId);
+        if (cat) {
+            cat.isCollapsed = !cat.isCollapsed;
+            persistData();
+            render();
+            setTimeout(() => {
+                const header = document.querySelector(`[data-header-id="${catId}"]`);
+                if(header) header.focus();
+            }, 50);
+        }
+    }
+
+    window.fn_markCategorySeen = function(catId) {
+        const cat = appData.find(c => c.id === catId);
+        if (!cat) return;
+        let changed = false;
+        cat.channels.forEach(ch => {
+            if (ch.isNew) {
+                ch.isNew = false;
+                ch.lastSeenVideoId = ch.latestVideoId;
+                changed = true;
+            }
+        });
+        if (changed) {
+            persistData();
+            render();
+        }
+    };
+
+    // --- RENDER ---
     function render(isUpdating = false) {
       const board = document.getElementById("mainBoard");
       const scrollPos = isUpdating ? window.scrollY : null;
@@ -179,100 +223,143 @@
 
         if (searchTerm !== "" && filteredChannels.length === 0) return;
 
+        const newCount = filteredChannels.filter(ch => ch.isNew).length;
+        const isCollapsed = cat.isCollapsed === true;
+
         const col = document.createElement("div");
         col.className = "column-width";
 
+        // --- HEADER (BUSTA) ---
         const header = document.createElement("div");
-        header.className = `${cat.color} text-white p-4 rounded-t-2xl font-bold flex justify-between items-center shadow-sm category-header`;
-        header.innerHTML = `<span class="tracking-tight uppercase text-xs">${cat.title} <span class="opacity-70">(${filteredChannels.length})</span></span>`;
-        if (cat.id !== "inbox" && cat.id !== "top-channels") {
-             const delBtn = document.createElement("button");
-             delBtn.innerHTML = '<i class="fas fa-times"></i>';
-             delBtn.className = "opacity-50 hover:opacity-100";
-             delBtn.onclick = (e) => { e.stopPropagation(); fn_deleteCategory(cat.id); };
-             header.appendChild(delBtn);
+        header.className = `tv-card header-card ${cat.color} text-white p-4 rounded-t-2xl font-bold flex justify-between items-center shadow-sm category-header select-none transition-transform`;
+        header.setAttribute("tabindex", "0");
+        header.dataset.headerId = cat.id;
+        header.title = "Clicca per Aprire/Chiudere";
+        
+        const iconClass = isCollapsed ? 'fa-envelope' : 'fa-envelope-open';
+        
+        let actionsHtml = "";
+        
+        // --- TASTO SEGNA TUTTI LETTI (Solo se ci sono novità) ---
+        if (newCount > 0) {
+            actionsHtml += `
+                <button class="opacity-70 hover:opacity-100 hover:text-emerald-300 mr-3 focus:text-emerald-300 transition-colors" 
+                        title="Segna tutti come letti" 
+                        onclick="event.stopPropagation(); fn_markCategorySeen('${cat.id}')">
+                    <i class="fas fa-circle-check text-lg"></i> </button>
+            `;
         }
 
+        if (cat.id !== "inbox" && cat.id !== "top-channels") {
+             actionsHtml += `<button class="opacity-50 hover:opacity-100 ml-2 focus:text-black" onclick="event.stopPropagation(); fn_deleteCategory('${cat.id}')"><i class="fas fa-times"></i></button>`;
+        }
+
+        let badgeHtml = "";
+        if (isCollapsed && newCount > 0) {
+            badgeHtml = `<span class="bg-red-600 text-white text-[10px] px-2 py-0.5 rounded-full shadow-md ml-2 border border-white animate-pulse">${newCount}</span>`;
+        }
+
+        header.innerHTML = `
+            <div class="flex items-center gap-2">
+                <i class="fas ${iconClass} opacity-80"></i>
+                <span class="tracking-tight uppercase text-xs flex items-center">
+                    ${cat.title} 
+                    <span class="opacity-70 ml-1 font-normal">(${filteredChannels.length})</span>
+                    ${badgeHtml}
+                </span>
+            </div>
+            <div class="flex items-center">${actionsHtml}</div>
+        `;
+        
+        header.onclick = () => fn_toggleCollapse(cat.id);
+        header.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                fn_toggleCollapse(cat.id);
+            }
+        });
+
+        // --- LISTA CANALI ---
         const list = document.createElement("div");
         list.id = cat.id;
-        list.className = "sortable-list bg-white dark:bg-slate-800 p-3 rounded-b-2xl shadow-sm border border-slate-200 dark:border-slate-700 grid grid-cols-1 gap-3";
+        list.className = `sortable-list bg-white dark:bg-slate-800 p-3 rounded-b-2xl shadow-sm border border-slate-200 dark:border-slate-700 grid grid-cols-1 gap-3 ${isCollapsed ? 'list-hidden' : ''}`;
 
-        filteredChannels.forEach(ch => {
-          const item = document.createElement("div");
-          const isActuallyNew = ch.isNew === true;
-          const isFavorite = topChannels.includes(ch.id);
-          const paddingClass = settings.isCompact ? 'p-3' : 'p-4';
-          const titleSize = settings.isCompact ? 'text-xs' : 'text-sm';
-          const videoWatchUrl = ch.latestVideoId ? `https://www.youtube.com/watch?v=${ch.latestVideoId}` : ch.url;
-          const dateLabel = ch.latestVideoPublished ? new Date(ch.latestVideoPublished).toLocaleDateString("it-IT", {day:'2-digit', month:'2-digit'}) : "--/--";
+        if (!isCollapsed) {
+            filteredChannels.forEach(ch => {
+              const item = document.createElement("div");
+              const isActuallyNew = ch.isNew === true;
+              const isFavorite = topChannels.includes(ch.id);
+              const paddingClass = settings.isCompact ? 'p-3' : 'p-4';
+              const titleSize = settings.isCompact ? 'text-xs' : 'text-sm';
+              const videoWatchUrl = ch.latestVideoId ? `https://www.youtube.com/watch?v=${ch.latestVideoId}` : ch.url;
+              const dateLabel = ch.latestVideoPublished ? new Date(ch.latestVideoPublished).toLocaleDateString("it-IT", {day:'2-digit', month:'2-digit'}) : "--/--";
 
-          item.setAttribute("tabindex", "0"); 
-          item.dataset.chId = ch.id;
-          item.dataset.videoUrl = videoWatchUrl;
-          item.className = `
-            tv-card
-            relative flex flex-col justify-between 
-            bg-white dark:bg-slate-800 
-            border border-slate-100 dark:border-slate-700
-            rounded-xl shadow-sm transition-all duration-200
-            cursor-pointer
-            ${isActuallyNew ? 'is-new-border' : ''}
-            ${paddingClass}
-          `;
+              item.setAttribute("tabindex", "0"); 
+              item.dataset.chId = ch.id;
+              item.dataset.videoUrl = videoWatchUrl;
+              item.className = `
+                tv-card video-card
+                relative flex flex-col justify-between 
+                bg-white dark:bg-slate-800 
+                border border-slate-100 dark:border-slate-700
+                rounded-xl shadow-sm transition-all duration-200
+                cursor-pointer
+                ${isActuallyNew ? 'is-new-border' : ''}
+                ${paddingClass}
+              `;
 
-          item.innerHTML = `
-            <div class="mb-2 flex justify-between items-start">
-               <div class="truncate ${titleSize} font-bold text-slate-800 dark:text-slate-100" title="${ch.name}">${ch.name}</div>
-               ${!settings.isLocked ? '<i class="fas fa-grip-vertical text-slate-300 dark:text-slate-600 drag-handle"></i>' : ''}
-            </div>
-            
-            <div class="flex-1 mb-3">
-               <div class="block leading-snug text-xs uppercase tracking-tight ${isActuallyNew ? 'text-red-600 font-black' : 'text-slate-500 dark:text-slate-400 font-medium'} line-clamp-2">
-                  ${ch.latestVideoTitle || 'Nessun video recente'}
-               </div>
-            </div>
+              item.innerHTML = `
+                <div class="mb-2 flex justify-between items-start">
+                   <div class="truncate ${titleSize} font-bold text-slate-800 dark:text-slate-100" title="${ch.name}">${ch.name}</div>
+                   ${!settings.isLocked ? '<i class="fas fa-grip-vertical text-slate-300 dark:text-slate-600 drag-handle"></i>' : ''}
+                </div>
+                
+                <div class="flex-1 mb-3">
+                   <div class="block leading-snug text-xs uppercase tracking-tight ${isActuallyNew ? 'text-red-600 font-black' : 'text-slate-500 dark:text-slate-400 font-medium'} line-clamp-2">
+                      ${ch.latestVideoTitle || 'Nessun video recente'}
+                   </div>
+                </div>
 
-            <div class="flex items-end justify-between mt-auto pt-2 border-t border-slate-100 dark:border-slate-700">
-               <div class="text-[9px] text-slate-400 font-bold uppercase">${dateLabel}</div>
-               <div class="flex gap-2">
-                 <i class="${isFavorite ? 'fas text-rose-500' : 'far text-slate-300 dark:text-slate-600'} fa-heart text-xs" onclick="event.stopPropagation(); fn_toggleFavorite('${ch.id}')"></i>
-                 <i class="fas fa-check-circle text-xs text-slate-300 dark:text-slate-600 hover:text-emerald-500" onclick="event.stopPropagation(); fn_markSeen('${ch.id}')"></i>
-                 <i class="fas fa-trash text-xs text-slate-300 dark:text-slate-600 hover:text-red-500" onclick="event.stopPropagation(); fn_deleteChannel('${ch.id}', '${cat.id}')"></i>
-               </div>
-            </div>
-          `;
-          
-          item.addEventListener('focus', () => {
-              localStorage.setItem(FOCUS_KEY, ch.id);
-          });
+                <div class="flex items-end justify-between mt-auto pt-2 border-t border-slate-100 dark:border-slate-700">
+                   <div class="text-[9px] text-slate-400 font-bold uppercase">${dateLabel}</div>
+                   <div class="flex gap-2">
+                     <i class="${isFavorite ? 'fas text-rose-500' : 'far text-slate-300 dark:text-slate-600'} fa-heart text-xs" onclick="event.stopPropagation(); fn_toggleFavorite('${ch.id}')"></i>
+                     <i class="fas fa-check-circle text-xs text-slate-300 dark:text-slate-600 hover:text-emerald-500" onclick="event.stopPropagation(); fn_markSeen('${ch.id}')"></i>
+                     <i class="fas fa-trash text-xs text-slate-300 dark:text-slate-600 hover:text-red-500" onclick="event.stopPropagation(); fn_deleteChannel('${ch.id}', '${cat.id}')"></i>
+                   </div>
+                </div>
+              `;
+              
+              item.addEventListener('focus', () => { localStorage.setItem(FOCUS_KEY, ch.id); });
+              item.addEventListener('click', () => { window.open(videoWatchUrl, '_blank'); fn_markSeen(ch.id); });
+              
+              item.addEventListener('keydown', (e) => {
+                  if (e.key === 'Enter') {
+                      e.preventDefault();
+                      window.open(videoWatchUrl, '_blank');
+                      fn_markSeen(ch.id);
+                  }
+                  if (e.key === 'Delete') {
+                      e.preventDefault();
+                      fn_markSeen(ch.id);
+                  }
+              });
 
-          item.addEventListener('click', () => { window.open(videoWatchUrl, '_blank'); fn_markSeen(ch.id); });
-          
-          // GESTIONE ENTER e DELETE
-          item.addEventListener('keydown', (e) => {
-              if (e.key === 'Enter') {
-                  e.preventDefault();
-                  window.open(videoWatchUrl, '_blank');
-                  fn_markSeen(ch.id);
-              }
-              if (e.key === 'Delete') {
-                  e.preventDefault();
-                  fn_markSeen(ch.id);
-              }
-          });
-
-          list.appendChild(item);
-        });
+              list.appendChild(item);
+            });
+        }
 
         col.appendChild(header);
         col.appendChild(list);
         board.appendChild(col);
         
-        new Sortable(list, {
-          group: "channels", animation: 150, ghostClass: "ghost", handle: ".drag-handle", disabled: settings.isLocked,
-          onAdd: function (evt) { syncFromDOM(); persistData(); render(); },
-          onEnd: () => { syncFromDOM(); persistData(); render(); }
-        });
+        if (!settings.isLocked) {
+             new Sortable(list, {
+              group: "channels", animation: 150, ghostClass: "ghost", handle: ".drag-handle", disabled: isCollapsed,
+              onAdd: function (evt) { syncFromDOM(); persistData(); render(); },
+              onEnd: () => { syncFromDOM(); persistData(); render(); }
+            });
+        }
       });
       
       new Sortable(board, { animation: 150, ghostClass: "ghost", handle: ".category-header", disabled: settings.isLocked, onEnd: () => { syncFromDOM(); persistData(); render(); } });
@@ -289,7 +376,7 @@
         if (lastId) {
             setTimeout(() => {
                 const el = document.querySelector(`[data-ch-id="${lastId}"]`);
-                if (el) {
+                if (el && el.offsetParent !== null) { 
                     el.focus();
                     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }
@@ -297,22 +384,28 @@
         }
     }
 
-    // --- LOGICA NAVIGAZIONE SPAZIALE (TV) ---
+    // --- LOGICA NAVIGAZIONE TV ---
     document.addEventListener('keydown', (e) => {
         const navKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
         if (!navKeys.includes(e.key)) return;
         e.preventDefault(); 
-        const cards = Array.from(document.querySelectorAll('.tv-card'));
-        if (cards.length === 0) return;
+        
+        const allCards = Array.from(document.querySelectorAll('.tv-card'));
+        const visibleCards = allCards.filter(el => el.offsetParent !== null);
+        
+        if (visibleCards.length === 0) return;
+        
         const current = document.activeElement.closest('.tv-card');
-        if (!current) { cards[0].focus(); return; }
+        if (!current || !visibleCards.includes(current)) { 
+            visibleCards[0].focus(); return; 
+        }
 
         const rect = current.getBoundingClientRect();
         const curCenterX = rect.left + rect.width / 2;
         const curCenterY = rect.top + rect.height / 2;
         let bestCandidate = null, minDistance = Infinity;
 
-        cards.forEach(card => {
+        visibleCards.forEach(card => {
             if (card === current) return;
             const cRect = card.getBoundingClientRect();
             const cCenterX = cRect.left + cRect.width / 2;
@@ -321,15 +414,16 @@
             const xDiff = cCenterX - curCenterX;
             const yDiff = cCenterY - curCenterY;
 
-            if (e.key === 'ArrowRight' && xDiff > 0 && Math.abs(yDiff) < rect.height) isValid = true;
-            else if (e.key === 'ArrowLeft' && xDiff < 0 && Math.abs(yDiff) < rect.height) isValid = true;
+            if (e.key === 'ArrowRight' && xDiff > 0 && Math.abs(yDiff) < rect.height * 2) isValid = true; 
+            else if (e.key === 'ArrowLeft' && xDiff < 0 && Math.abs(yDiff) < rect.height * 2) isValid = true;
             else if (e.key === 'ArrowDown' && yDiff > 0) isValid = true;
             else if (e.key === 'ArrowUp' && yDiff < 0) isValid = true;
 
             if (isValid) {
                 dist = Math.sqrt(xDiff*xDiff + yDiff*yDiff);
-                if ((e.key === 'ArrowUp' || e.key === 'ArrowDown')) dist += Math.abs(xDiff) * 2; 
-                if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight')) dist += Math.abs(yDiff) * 2;
+                if ((e.key === 'ArrowUp' || e.key === 'ArrowDown')) dist += Math.abs(xDiff) * 3; 
+                if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight')) dist += Math.abs(yDiff) * 3;
+                
                 if (dist < minDistance) { minDistance = dist; bestCandidate = card; }
             }
         });
@@ -340,7 +434,6 @@
         }
     });
 
-    // --- BUBBLE UP (AUTO SORT) ---
     window.fn_checkAllUpdates = async function() {
         const all = appData.flatMap(cat => cat.channels);
         const unique = Array.from(new Set(all.map(ch => ch.id))).map(id => all.find(ch => ch.id === id));
@@ -384,7 +477,6 @@
         btn.disabled = false; icon.classList.remove("fa-spin"); persistData(); render(false);
     };
 
-    // --- FUNZIONI STANDARD ---
     window.fn_toggleFavorite = function(chId) {
         const topCat = appData.find(c => c.id === "top-channels");
         const alreadyFav = topCat.channels.findIndex(ch => ch.id === chId);
@@ -400,10 +492,9 @@
     window.fn_markSeen = function(id) { appData.forEach(cat => cat.channels.forEach(ch => { if (ch.id === id) { ch.isNew = false; ch.lastSeenVideoId = ch.latestVideoId; } })); persistData(); render(); };
     window.fn_addSingleChannel = function() { const name = prompt("Nome Canale:"); const rawUrl = prompt("URL o Username:"); if (!name || !rawUrl) return; let id = rawUrl.includes('channel/') ? rawUrl.split('channel/')[1].split('/')[0] : rawUrl.replace('@', '').split('/').pop(); let url = rawUrl.startsWith('http') ? rawUrl : `https://www.youtube.com/@${id}`; appData.find(c => c.id === "inbox").channels.unshift({ id, name, url, isNew: true, latestVideoId: null, latestVideoTitle: null, latestVideoPublished: null, latestVideoDuration: null, lastSeenVideoId: null }); persistData(); render(); };
     window.fn_deleteChannel = function(chId, catId) { if (confirm("Rimuovere il canale?")) { const cat = appData.find(c => c.id === catId); cat.channels = cat.channels.filter(ch => ch.id !== chId); persistData(); render(); } };
-    window.fn_addCategory = function() { const n = prompt("Nome:"); if (n) { appData.push({ id: "c_" + Date.now(), title: n.toUpperCase(), color: "bg-indigo-600", channels: [] }); persistData(); render(); } };
+    window.fn_addCategory = function() { const n = prompt("Nome:"); if (n) { appData.push({ id: "c_" + Date.now(), title: n.toUpperCase(), color: "bg-indigo-600", channels: [], isCollapsed: false }); persistData(); render(); } };
     function fn_deleteCategory(id) { if (confirm("Eliminare categoria?")) { const i = appData.findIndex(c => c.id === id); const inbox = appData.find(c => c.id === "inbox"); appData[i].channels.forEach(ch => { if(!inbox.channels.some(x => x.id === ch.id)) inbox.channels.push(ch); }); appData.splice(i, 1); persistData(); render(); } }
     
-    // --- CLOUD ---
     function gapiLoaded() { gapi.load('client', async () => { await gapi.client.init({ apiKey: API_KEY, discoveryDocs: [DISCOVERY_DOC] }); gapiInited = true; checkAuthPersistence(); }); }
     function gisLoaded() { tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPES, callback: async () => { localStorage.setItem("drive_connected", "true"); await initializeDriveFile(); } }); gisInited = true; checkAuthPersistence(); }
     function checkAuthPersistence() { if (gapiInited && gisInited && localStorage.getItem("drive_connected") === "true") tokenClient.requestAccessToken({ prompt: '' }); }
@@ -415,7 +506,43 @@
     function countChannels() { const ids = new Set(); appData.forEach(c => { if(c.id !== "top-channels") c.channels.forEach(ch => ids.add(ch.id)) }); return ids.size; }
     window.fn_saveSettings = function() { settings.useProxy = document.getElementById("useProxyToggle").checked; settings.proxyUrlTemplate = document.getElementById("proxyUrlInput").value.trim(); persistSettings(); render(); if(driveFileId) saveToDrive(); };
     window.fn_reset = function() { if (confirm("Reset?")) { localStorage.clear(); location.reload(); } };
-    function syncFromDOM() { const newState = []; document.querySelectorAll(".sortable-list").forEach(listEl => { const catId = listEl.id, original = appData.find(c => c.id === catId), channels = []; listEl.querySelectorAll("[data-ch-id]").forEach(el => { const chId = el.dataset.chId; let found = null; for(const c of appData) { const m = c.channels.find(x => x.id === chId); if(m) { found = m; break; } } if(found) channels.push(structuredClone(found)); }); if(original) newState.push({ ...original, channels }); }); appData = newState; }
+    
+    function syncFromDOM() { 
+        const newState = []; 
+        const categoryDivs = document.querySelectorAll('.column-width');
+        if(categoryDivs.length === 0) return;
+
+        categoryDivs.forEach(col => {
+            const listEl = col.querySelector('.sortable-list');
+            if(!listEl) return;
+            const catId = listEl.id;
+            const originalCat = appData.find(c => c.id === catId);
+            
+            if(originalCat) {
+                let newChannels = [];
+                if (originalCat.isCollapsed) {
+                    newChannels = originalCat.channels;
+                } else {
+                    listEl.querySelectorAll("[data-ch-id]").forEach(el => { 
+                        const chId = el.dataset.chId; 
+                        let found = null; 
+                        for(const c of appData) { 
+                            const m = c.channels.find(x => x.id === chId); 
+                            if(m) { found = m; break; } 
+                        } 
+                        if(found) newChannels.push(structuredClone(found)); 
+                    });
+                }
+                newState.push({ ...originalCat, channels: newChannels });
+            }
+        });
+        
+        appData.forEach(oldCat => {
+            if(!newState.find(n => n.id === oldCat.id)) newState.push(oldCat);
+        });
+
+        appData = newState; 
+    }
 
     window.onload = () => { document.getElementById("useProxyToggle").checked = settings.useProxy; document.getElementById("proxyUrlInput").value = settings.proxyUrlTemplate; applyTheme(); updateCompactUI(); updateLockUI(); render(); };
   </script>
