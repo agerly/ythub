@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>YT HUB PRO - v5.4 Chessboard Nav</title>
+  <title>YT HUB PRO - v5.5 Full Features</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
@@ -42,7 +42,6 @@
     @media (min-width: 1280px) { #mainBoard { column-count: 3; } }
     @media (min-width: 1600px) { #mainBoard { column-count: 4; } }
 
-    /* Importante: break-inside avoid impedisce che una categoria venga spezzata tra due colonne */
     .column-width { display: inline-block; width: 100%; margin-bottom: 1.5rem; break-inside: avoid; }
     .sortable-list { min-height: 10px; height: auto; overflow: visible; transition: all 0.3s ease; }
     
@@ -84,7 +83,7 @@
         <div>
           <h1 class="text-2xl font-black text-slate-800 dark:text-white tracking-tighter italic flex items-baseline gap-2">
             <span>YT HUB <span class="text-red-600 font-normal">TV</span></span>
-            <span class="text-xs text-slate-400 font-mono font-normal">v5.4 Chessboard</span>
+            <span class="text-xs text-slate-400 font-mono font-normal">v5.5</span>
           </h1>
           <p id="statusLine" class="text-slate-400 text-xs mt-2 font-bold uppercase tracking-widest"></p>
         </div>
@@ -210,6 +209,18 @@
         }
     };
 
+    // NUOVA FUNZIONE PER NOTEBOOK LM (Placeholder)
+    window.fn_notebookLM = function(url) {
+        // Apre il link in una nuova tab. 
+        // Se vuoi aprire direttamente https://notebooklm.google.com/ puoi cambiare qui.
+        window.open(url, '_blank');
+        // Opzionale: copia negli appunti
+        navigator.clipboard.writeText(url).then(() => {
+            setStatus("Link copiato per NotebookLM!");
+            setTimeout(() => setStatus(""), 2000);
+        });
+    }
+
     // --- RENDER ---
     function render(isUpdating = false) {
       const board = document.getElementById("mainBoard");
@@ -230,7 +241,7 @@
 
         const col = document.createElement("div");
         col.className = "column-width";
-        col.dataset.colCatId = cat.id; // Per navigazione
+        col.dataset.colCatId = cat.id;
 
         // --- HEADER (BUSTA) ---
         const header = document.createElement("div");
@@ -296,6 +307,7 @@
               const titleSize = settings.isCompact ? 'text-xs' : 'text-sm';
               const videoWatchUrl = ch.latestVideoId ? `https://www.youtube.com/watch?v=${ch.latestVideoId}` : ch.url;
               const dateLabel = ch.latestVideoPublished ? new Date(ch.latestVideoPublished).toLocaleDateString("it-IT", {day:'2-digit', month:'2-digit'}) : "--/--";
+              const durationLabel = ch.latestVideoDuration ? `<span class="opacity-60 ml-1">• ${ch.latestVideoDuration}</span>` : "";
 
               item.setAttribute("tabindex", "0"); 
               item.dataset.chId = ch.id;
@@ -325,8 +337,11 @@
                 </div>
 
                 <div class="flex items-end justify-between mt-auto pt-2 border-t border-slate-100 dark:border-slate-700">
-                   <div class="text-[9px] text-slate-400 font-bold uppercase">${dateLabel}</div>
-                   <div class="flex gap-2">
+                   <div class="text-[9px] text-slate-400 font-bold uppercase flex items-center">
+                      ${dateLabel} ${durationLabel}
+                   </div>
+                   <div class="flex gap-2 items-center">
+                     <i class="fas fa-book text-xs text-slate-300 dark:text-slate-600 hover:text-purple-500" title="NotebookLM" onclick="event.stopPropagation(); fn_notebookLM('${videoWatchUrl}')"></i>
                      <i class="${isFavorite ? 'fas text-rose-500' : 'far text-slate-300 dark:text-slate-600'} fa-heart text-xs" onclick="event.stopPropagation(); fn_toggleFavorite('${ch.id}')"></i>
                      <i class="fas fa-check-circle text-xs text-slate-300 dark:text-slate-600 hover:text-emerald-500" onclick="event.stopPropagation(); fn_markSeen('${ch.id}')"></i>
                      <i class="fas fa-trash text-xs text-slate-300 dark:text-slate-600 hover:text-red-500" onclick="event.stopPropagation(); fn_deleteChannel('${ch.id}', '${cat.id}')"></i>
@@ -397,30 +412,22 @@
         const current = document.activeElement.closest('.tv-card');
         if (!current) return;
 
-        // Identifichiamo il "quadrato" della scacchiera attuale (La Categoria)
         let currentCategoryDiv = current.closest('.column-width');
         if (!currentCategoryDiv) return;
 
-        const allCategories = Array.from(document.querySelectorAll('.column-width'));
-        
-        // --- FRECCIA DESTRA / SINISTRA (Saltare tra le colonne visive) ---
+        // --- FRECCIA DESTRA / SINISTRA ---
         if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
             const curRect = currentCategoryDiv.getBoundingClientRect();
             let bestTargetHeader = null;
             let minDistance = Infinity;
 
-            // Filtriamo solo gli Header delle altre categorie
             const allHeaders = Array.from(document.querySelectorAll('.header-card'));
             
             allHeaders.forEach(header => {
                 const hRect = header.getBoundingClientRect();
-                
-                // Ignoriamo l'header della categoria attuale
                 if (header.closest('.column-width') === currentCategoryDiv) return;
 
                 let isValid = false;
-                // Logica VISIVA: cerchiamo qualcosa fisicamente a destra o sinistra
-                // Usiamo una tolleranza Y molto ampia per considerare tutta la colonna a fianco
                 if (e.key === 'ArrowRight') {
                     if (hRect.left > curRect.right - 50) isValid = true; 
                 } else {
@@ -428,11 +435,9 @@
                 }
 
                 if (isValid) {
-                    // Cerca quello con la Y più simile per "restare sulla riga" (utile se ci sono più righe)
-                    // oppure semplicemente il più vicino in assoluto
                     const distX = Math.abs(hRect.left - curRect.left);
                     const distY = Math.abs(hRect.top - curRect.top);
-                    const dist = distX + (distY * 0.5); // Peso minore su Y per favorire la colonna
+                    const dist = distX + (distY * 0.5); 
                     
                     if (dist < minDistance) {
                         minDistance = dist;
@@ -448,13 +453,9 @@
             return;
         }
 
-        // --- FRECCIA SU / GIU (Navigazione interna alla colonna) ---
+        // --- FRECCIA SU / GIU ---
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-            // Cerchiamo il prossimo elemento focusable che è VISIVAMENTE sotto/sopra e ALLINEATO orizzontalmente
-            // Questo gestisce sia i video dentro la lista, sia il salto alla categoria sotto (se presente nella stessa colonna CSS)
-            
             const allCards = Array.from(document.querySelectorAll('.tv-card'));
-            // Filtriamo solo card visibili
             const visibleCards = allCards.filter(el => el.offsetParent !== null);
             
             const curRect = current.getBoundingClientRect();
@@ -468,8 +469,7 @@
                 const cRect = card.getBoundingClientRect();
                 const cCenterX = cRect.left + cRect.width / 2;
 
-                // Deve essere allineato orizzontalmente (stessa colonna visiva)
-                if (Math.abs(cCenterX - curCenterX) > curRect.width * 0.5) return; // Fuori asse X
+                if (Math.abs(cCenterX - curCenterX) > curRect.width * 0.5) return; 
 
                 const yDiff = cRect.top - curRect.top;
                 
@@ -490,7 +490,6 @@
                 bestCandidate.focus();
                 bestCandidate.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             }
-            // Se non c'è bestCandidate (es. fine lista), NON facciamo nulla (blocco).
         }
     });
 
