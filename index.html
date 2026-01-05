@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>YT HUB PRO - v5.6 Fixed NotebookLM</title>
+  <title>YT HUB PRO - v5.7 AutoFocus Fix</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
@@ -83,7 +83,7 @@
         <div>
           <h1 class="text-2xl font-black text-slate-800 dark:text-white tracking-tighter italic flex items-baseline gap-2">
             <span>YT HUB <span class="text-red-600 font-normal">TV</span></span>
-            <span class="text-xs text-slate-400 font-mono font-normal">v5.6</span>
+            <span class="text-xs text-slate-400 font-mono font-normal">v5.7</span>
           </h1>
           <p id="statusLine" class="text-slate-400 text-xs mt-2 font-bold uppercase tracking-widest"></p>
         </div>
@@ -329,26 +329,26 @@
 
               item.innerHTML = `
                 <div class="mb-2 flex justify-between items-start">
-                   <div class="truncate ${titleSize} font-bold text-slate-800 dark:text-slate-100" title="${ch.name}">${ch.name}</div>
-                   ${!settings.isLocked ? '<i class="fas fa-grip-vertical text-slate-300 dark:text-slate-600 drag-handle"></i>' : ''}
+                    <div class="truncate ${titleSize} font-bold text-slate-800 dark:text-slate-100" title="${ch.name}">${ch.name}</div>
+                    ${!settings.isLocked ? '<i class="fas fa-grip-vertical text-slate-300 dark:text-slate-600 drag-handle"></i>' : ''}
                 </div>
                 
                 <div class="flex-1 mb-3">
-                   <div class="block leading-snug text-xs uppercase tracking-tight ${isActuallyNew ? 'text-red-600 font-black' : 'text-slate-500 dark:text-slate-400 font-medium'} line-clamp-2">
+                    <div class="block leading-snug text-xs uppercase tracking-tight ${isActuallyNew ? 'text-red-600 font-black' : 'text-slate-500 dark:text-slate-400 font-medium'} line-clamp-2">
                       ${ch.latestVideoTitle || 'Nessun video recente'}
-                   </div>
+                    </div>
                 </div>
 
                 <div class="flex items-end justify-between mt-auto pt-2 border-t border-slate-100 dark:border-slate-700">
-                   <div class="text-[9px] text-slate-400 font-bold uppercase flex items-center">
+                    <div class="text-[9px] text-slate-400 font-bold uppercase flex items-center">
                       ${dateLabel} ${durationLabel}
-                   </div>
-                   <div class="flex gap-2 items-center">
-                     <i class="fas fa-book text-xs text-slate-300 dark:text-slate-600 hover:text-purple-500" title="Copia link e apri NotebookLM" onclick="event.stopPropagation(); fn_notebookLM('${videoWatchUrl}')"></i>
-                     <i class="${isFavorite ? 'fas text-rose-500' : 'far text-slate-300 dark:text-slate-600'} fa-heart text-xs" onclick="event.stopPropagation(); fn_toggleFavorite('${ch.id}')"></i>
-                     <i class="fas fa-check-circle text-xs text-slate-300 dark:text-slate-600 hover:text-emerald-500" onclick="event.stopPropagation(); fn_markSeen('${ch.id}')"></i>
-                     <i class="fas fa-trash text-xs text-slate-300 dark:text-slate-600 hover:text-red-500" onclick="event.stopPropagation(); fn_deleteChannel('${ch.id}', '${cat.id}')"></i>
-                   </div>
+                    </div>
+                    <div class="flex gap-2 items-center">
+                      <i class="fas fa-book text-xs text-slate-300 dark:text-slate-600 hover:text-purple-500" title="Copia link e apri NotebookLM" onclick="event.stopPropagation(); fn_notebookLM('${videoWatchUrl}')"></i>
+                      <i class="${isFavorite ? 'fas text-rose-500' : 'far text-slate-300 dark:text-slate-600'} fa-heart text-xs" onclick="event.stopPropagation(); fn_toggleFavorite('${ch.id}')"></i>
+                      <i class="fas fa-check-circle text-xs text-slate-300 dark:text-slate-600 hover:text-emerald-500" onclick="event.stopPropagation(); fn_markSeen('${ch.id}')"></i>
+                      <i class="fas fa-trash text-xs text-slate-300 dark:text-slate-600 hover:text-red-500" onclick="event.stopPropagation(); fn_deleteChannel('${ch.id}', '${cat.id}')"></i>
+                    </div>
                 </div>
               `;
               
@@ -363,6 +363,11 @@
                   }
                   if (e.key === 'Delete') {
                       e.preventDefault();
+                      // --- FIX: CALCOLA IL PROSSIMO ELEMENTO PRIMA DEL RENDER ---
+                      const nextItem = item.nextElementSibling;
+                      if (nextItem && nextItem.dataset.chId) {
+                           localStorage.setItem(FOCUS_KEY, nextItem.dataset.chId);
+                      }
                       fn_markSeen(ch.id);
                   }
               });
