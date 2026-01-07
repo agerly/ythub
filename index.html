@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>YT HUB PRO - v5.7 AutoFocus Fix</title>
+  <title>YT HUB PRO - v5.9 Deep Clean</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
@@ -83,7 +83,7 @@
         <div>
           <h1 class="text-2xl font-black text-slate-800 dark:text-white tracking-tighter italic flex items-baseline gap-2">
             <span>YT HUB <span class="text-red-600 font-normal">TV</span></span>
-            <span class="text-xs text-slate-400 font-mono font-normal">v5.7</span>
+            <span class="text-xs text-slate-400 font-mono font-normal">v5.9</span>
           </h1>
           <p id="statusLine" class="text-slate-400 text-xs mt-2 font-bold uppercase tracking-widest"></p>
         </div>
@@ -150,8 +150,50 @@
         return parsed;
       } catch { return structuredClone(DEFAULT_DATA); }
     }
-    function persistData() { localStorage.setItem(STORAGE_KEY, JSON.stringify(appData)); if (driveFileId && gapi.client.getToken()) { saveToDrive(); } }
+    
+    function persistData() { 
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(appData)); 
+            if (driveFileId && gapi.client.getToken()) { saveToDrive(); } 
+        } catch (e) {
+            console.error("Errore salvataggio locale:", e);
+            setStatus("Errore memoria locale! Spazio pieno?");
+        }
+    }
+    
     function setStatus(msg) { document.getElementById("statusLine").textContent = msg || ""; }
+
+    // --- PULIZIA PROFONDA (DEEP CLEAN) ---
+    // Risolve il bug dei canali doppi che sballano il conteggio
+    function fn_deepClean() {
+        const globalIds = new Set();
+        let removedCount = 0;
+        
+        // Ordina le categorie per elaborare Inbox per ultima.
+        // Cosi se c'è un duplicato tra "Tech" e "Inbox", teniamo quello in "Tech" e cancelliamo quello in "Inbox".
+        const categoriesToScan = appData.filter(c => c.id !== "top-channels" && c.id !== "inbox");
+        const inbox = appData.find(c => c.id === "inbox");
+        if(inbox) categoriesToScan.push(inbox);
+
+        categoriesToScan.forEach(cat => {
+            const cleanChannels = [];
+            cat.channels.forEach(ch => {
+                if (ch.id && !globalIds.has(ch.id)) {
+                    globalIds.add(ch.id);
+                    cleanChannels.push(ch);
+                } else {
+                    // ID già visto in un'altra categoria precedente: è un duplicato fantasma. Rimuovere.
+                    removedCount++;
+                }
+            });
+            cat.channels = cleanChannels;
+        });
+
+        if (removedCount > 0) {
+            console.log(`Deep Clean: Rimossi ${removedCount} canali duplicati tra le categorie.`);
+            persistData();
+        }
+    }
 
     // --- UI HELPERS ---
     function applyTheme() {
@@ -184,7 +226,6 @@
             cat.isCollapsed = !cat.isCollapsed;
             persistData();
             render();
-            // Refocus header
             setTimeout(() => {
                 const header = document.querySelector(`[data-header-id="${catId}"]`);
                 if(header) header.focus();
@@ -211,15 +252,12 @@
 
     // --- NOTEBOOKLM LOGIC ---
     window.fn_notebookLM = function(url) {
-        // 1. Copia URL
         navigator.clipboard.writeText(url).then(() => {
             setStatus("Link copiato! Aprendo NotebookLM...");
-            // 2. Apre NotebookLM in nuova scheda
             window.open("https://notebooklm.google.com/", "_blank");
             setTimeout(() => setStatus(""), 3000);
         }).catch(err => {
             console.error(err);
-            // Fallback
             window.open("https://notebooklm.google.com/", "_blank");
         });
     }
@@ -246,7 +284,6 @@
         col.className = "column-width";
         col.dataset.colCatId = cat.id;
 
-        // --- HEADER (BUSTA) ---
         const header = document.createElement("div");
         header.className = `tv-card header-card ${cat.color} text-white p-4 rounded-t-2xl font-bold flex justify-between items-center shadow-sm category-header select-none transition-transform`;
         header.setAttribute("tabindex", "0");
@@ -296,7 +333,6 @@
             }
         });
 
-        // --- LISTA CANALI ---
         const list = document.createElement("div");
         list.id = cat.id;
         list.className = `sortable-list bg-white dark:bg-slate-800 p-3 rounded-b-2xl shadow-sm border border-slate-200 dark:border-slate-700 grid grid-cols-1 gap-3 ${isCollapsed ? 'list-hidden' : ''}`;
@@ -363,7 +399,6 @@
                   }
                   if (e.key === 'Delete') {
                       e.preventDefault();
-                      // --- FIX: CALCOLA IL PROSSIMO ELEMENTO PRIMA DEL RENDER ---
                       const nextItem = item.nextElementSibling;
                       if (nextItem && nextItem.dataset.chId) {
                            localStorage.setItem(FOCUS_KEY, nextItem.dataset.chId);
@@ -423,37 +458,27 @@
         let currentCategoryDiv = current.closest('.column-width');
         if (!currentCategoryDiv) return;
 
-        // --- FRECCIA DESTRA / SINISTRA ---
         if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
             const curRect = currentCategoryDiv.getBoundingClientRect();
             let bestTargetHeader = null;
             let minDistance = Infinity;
-
             const allHeaders = Array.from(document.querySelectorAll('.header-card'));
-            
             allHeaders.forEach(header => {
                 const hRect = header.getBoundingClientRect();
                 if (header.closest('.column-width') === currentCategoryDiv) return;
-
                 let isValid = false;
                 if (e.key === 'ArrowRight') {
                     if (hRect.left > curRect.right - 50) isValid = true; 
                 } else {
                     if (hRect.right < curRect.left + 50) isValid = true;
                 }
-
                 if (isValid) {
                     const distX = Math.abs(hRect.left - curRect.left);
                     const distY = Math.abs(hRect.top - curRect.top);
                     const dist = distX + (distY * 0.5); 
-                    
-                    if (dist < minDistance) {
-                        minDistance = dist;
-                        bestTargetHeader = header;
-                    }
+                    if (dist < minDistance) { minDistance = dist; bestTargetHeader = header; }
                 }
             });
-
             if (bestTargetHeader) {
                 bestTargetHeader.focus();
                 bestTargetHeader.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -461,39 +486,27 @@
             return;
         }
 
-        // --- FRECCIA SU / GIU ---
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
             const allCards = Array.from(document.querySelectorAll('.tv-card'));
             const visibleCards = allCards.filter(el => el.offsetParent !== null);
-            
             const curRect = current.getBoundingClientRect();
             const curCenterX = curRect.left + curRect.width / 2;
-            
             let bestCandidate = null;
             let minV_Dist = Infinity;
-
             visibleCards.forEach(card => {
                 if (card === current) return;
                 const cRect = card.getBoundingClientRect();
                 const cCenterX = cRect.left + cRect.width / 2;
-
                 if (Math.abs(cCenterX - curCenterX) > curRect.width * 0.5) return; 
-
                 const yDiff = cRect.top - curRect.top;
-                
                 let isValid = false;
                 if (e.key === 'ArrowDown' && yDiff > 0) isValid = true;
                 if (e.key === 'ArrowUp' && yDiff < 0) isValid = true;
-
                 if (isValid) {
                     const dist = Math.abs(yDiff);
-                    if (dist < minV_Dist) {
-                        minV_Dist = dist;
-                        bestCandidate = card;
-                    }
+                    if (dist < minV_Dist) { minV_Dist = dist; bestCandidate = card; }
                 }
             });
-
             if (bestCandidate) {
                 bestCandidate.focus();
                 bestCandidate.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -501,47 +514,67 @@
         }
     });
 
+    // --- FIX UPDATE LOGIC ---
     window.fn_checkAllUpdates = async function() {
-        const all = appData.flatMap(cat => cat.channels);
-        const unique = Array.from(new Set(all.map(ch => ch.id))).map(id => all.find(ch => ch.id === id));
-        let processed = 0, total = unique.length;
+        const allChannels = appData.flatMap(cat => cat.channels);
+        const uniqueIds = [...new Set(allChannels.map(ch => ch.id))];
+        
+        let processed = 0, total = uniqueIds.length;
         const btn = document.getElementById("updateAllBtn"), icon = document.getElementById("updateIcon");
         btn.disabled = true; icon.classList.add("fa-spin");
         
-        for (let i = 0; i < unique.length; i += 10) {
-            const chunk = unique.slice(i, i + 10);
-            await Promise.all(chunk.map(async (ch) => {
+        const CHUNK_SIZE = 5; 
+        
+        for (let i = 0; i < uniqueIds.length; i += CHUNK_SIZE) {
+            const chunkIds = uniqueIds.slice(i, i + CHUNK_SIZE);
+            
+            await Promise.all(chunkIds.map(async (chId) => {
                 try {
-                    const url = settings.useProxy ? settings.proxyUrlTemplate.replace("{ID}", ch.id) : `https://www.youtube.com/feeds/videos.xml?channel_id=${ch.id}`;
+                    const url = settings.useProxy 
+                        ? settings.proxyUrlTemplate.replace("{ID}", chId) 
+                        : `https://www.youtube.com/feeds/videos.xml?channel_id=${chId}`;
+                    
                     const resp = await fetch(url);
+                    if (!resp.ok) throw new Error("Network");
                     const data = await resp.json();
+                    
                     if(data && data.videoId) {
                         appData.forEach(cat => {
-                            const idx = cat.channels.findIndex(c => c.id === ch.id);
-                            if (idx > -1) {
-                                const inst = cat.channels[idx];
-                                if (inst.lastSeenVideoId !== data.videoId) {
-                                    Object.assign(inst, { 
-                                        isNew: true, 
-                                        latestVideoId: data.videoId, 
-                                        latestVideoTitle: data.title, 
-                                        latestVideoPublished: data.published, 
-                                        latestVideoDuration: data.duration || null 
-                                    });
-                                    if (idx > 0) {
-                                        cat.channels.splice(idx, 1);
-                                        cat.channels.unshift(inst);
+                            const instanceIndex = cat.channels.findIndex(c => c.id === chId);
+                            if (instanceIndex > -1) {
+                                const inst = cat.channels[instanceIndex];
+                                
+                                const isRealUpdate = inst.latestVideoId !== data.videoId;
+                                const isNotSeen = inst.lastSeenVideoId !== data.videoId;
+                                
+                                if (isRealUpdate) {
+                                    inst.latestVideoId = data.videoId;
+                                    inst.latestVideoTitle = data.title;
+                                    inst.latestVideoPublished = data.published;
+                                    inst.latestVideoDuration = data.duration || null;
+                                    
+                                    if (isNotSeen) {
+                                        inst.isNew = true;
+                                        if (instanceIndex > 0) {
+                                            cat.channels.splice(instanceIndex, 1);
+                                            cat.channels.unshift(inst);
+                                        }
                                     }
                                 }
                             }
                         });
                     }
                 } catch (err) {}
-                processed++; setStatus(`Verifica: ${processed} / ${total}...`);
+                processed++; 
+                setStatus(`Aggiornamento: ${processed} / ${total}`);
             }));
-            render(true); 
+            
+            if(i % 20 === 0) render(true);
         }
-        btn.disabled = false; icon.classList.remove("fa-spin"); persistData(); render(false);
+        
+        btn.disabled = false; icon.classList.remove("fa-spin"); 
+        persistData(); 
+        render(false);
     };
 
     window.fn_toggleFavorite = function(chId) {
@@ -556,7 +589,17 @@
         persistData(); render();
     };
 
-    window.fn_markSeen = function(id) { appData.forEach(cat => cat.channels.forEach(ch => { if (ch.id === id) { ch.isNew = false; ch.lastSeenVideoId = ch.latestVideoId; } })); persistData(); render(); };
+    window.fn_markSeen = function(id) { 
+        appData.forEach(cat => cat.channels.forEach(ch => { 
+            if (ch.id === id) { 
+                ch.isNew = false; 
+                ch.lastSeenVideoId = ch.latestVideoId || "seen_manually_" + Date.now(); 
+            } 
+        })); 
+        persistData(); 
+        render(); 
+    };
+
     window.fn_addSingleChannel = function() { const name = prompt("Nome Canale:"); const rawUrl = prompt("URL o Username:"); if (!name || !rawUrl) return; let id = rawUrl.includes('channel/') ? rawUrl.split('channel/')[1].split('/')[0] : rawUrl.replace('@', '').split('/').pop(); let url = rawUrl.startsWith('http') ? rawUrl : `https://www.youtube.com/@${id}`; appData.find(c => c.id === "inbox").channels.unshift({ id, name, url, isNew: true, latestVideoId: null, latestVideoTitle: null, latestVideoPublished: null, latestVideoDuration: null, lastSeenVideoId: null }); persistData(); render(); };
     window.fn_deleteChannel = function(chId, catId) { if (confirm("Rimuovere il canale?")) { const cat = appData.find(c => c.id === catId); cat.channels = cat.channels.filter(ch => ch.id !== chId); persistData(); render(); } };
     window.fn_addCategory = function() { const n = prompt("Nome:"); if (n) { appData.push({ id: "c_" + Date.now(), title: n.toUpperCase(), color: "bg-indigo-600", channels: [], isCollapsed: false }); persistData(); render(); } };
@@ -570,7 +613,21 @@
     async function createDriveFile() { const response = await gapi.client.drive.files.create({ resource: { name: SYNC_FILE_NAME, mimeType: 'application/json' } }); driveFileId = response.result.id; saveToDrive(); }
     async function saveToDrive() { if (!driveFileId || !gapi.client.getToken()) return; await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`, { method: 'PATCH', headers: { 'Authorization': 'Bearer ' + gapi.client.getToken().access_token, 'Content-Type': 'application/json' }, body: JSON.stringify({ appData, settings }) }); }
     async function loadFromDrive() { const response = await gapi.client.drive.files.get({ fileId: driveFileId, alt: 'media' }); const cloudData = response.result || JSON.parse(response.body); if (cloudData.appData) { appData = cloudData.appData; settings = { ...settings, ...cloudData.settings }; persistSettings(); applyTheme(); updateCompactUI(); updateLockUI(); } localStorage.setItem(STORAGE_KEY, JSON.stringify(appData)); render(); }
-    function countChannels() { const ids = new Set(); appData.forEach(c => { if(c.id !== "top-channels") c.channels.forEach(ch => ids.add(ch.id)) }); return ids.size; }
+    
+    function countChannels() { 
+        const ids = new Set(); 
+        appData.forEach(c => { 
+            if(c.id !== "top-channels") {
+                c.channels.forEach(ch => {
+                    if(ch.id) ids.add(ch.id);
+                });
+            }
+        });
+        // LOG PER DEBUG: Se premi F12 vedi gli ID che contano
+        // console.log("Canali contati:", Array.from(ids));
+        return ids.size; 
+    }
+    
     window.fn_saveSettings = function() { settings.useProxy = document.getElementById("useProxyToggle").checked; settings.proxyUrlTemplate = document.getElementById("proxyUrlInput").value.trim(); persistSettings(); render(); if(driveFileId) saveToDrive(); };
     window.fn_reset = function() { if (confirm("Reset?")) { localStorage.clear(); location.reload(); } };
     
@@ -611,7 +668,12 @@
         appData = newState; 
     }
 
-    window.onload = () => { document.getElementById("useProxyToggle").checked = settings.useProxy; document.getElementById("proxyUrlInput").value = settings.proxyUrlTemplate; applyTheme(); updateCompactUI(); updateLockUI(); render(); };
+    window.onload = () => { 
+        fn_deepClean(); // Esegue la pulizia profonda all'avvio
+        document.getElementById("useProxyToggle").checked = settings.useProxy; 
+        document.getElementById("proxyUrlInput").value = settings.proxyUrlTemplate; 
+        applyTheme(); updateCompactUI(); updateLockUI(); render(); 
+    };
   </script>
 
   <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
